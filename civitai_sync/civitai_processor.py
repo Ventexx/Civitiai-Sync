@@ -11,6 +11,7 @@ from collections import OrderedDict
 from .civitai_api import CivitaiAPIClient
 from .file_manager import FileManager
 from .hash_utils import compute_sha256, verify_safetensor_file
+from .metadata_saver import MetadataSaver
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,15 @@ class CivitaiProcessor:
         
         return metadata_results
 
+    def fetch_additional_metadata(self, version_id: int, model_id: int) -> Dict[str, Any]:
+        """
+        Call out to MetadataSaver.fetch_additional_metadata (stub) so that
+        when the real endpoint exists, you’ll just need to implement it there.
+        """
+        return MetadataSaver(Path()).fetch_additional_metadata(
+            self.api_client, version_id, model_id
+        )
+
     def download_images(self, file_metadata_map: Dict[Path, Optional[Dict[Any, Any]]]) -> int:
         """
         Download preview images for models with metadata
@@ -240,41 +250,6 @@ class CivitaiProcessor:
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
 
-    def save_metadata_to_json(self, file_metadata_map, file_hash_map) -> int:
-        """
-        Save SHA256 + Civitai metadata flattened into the JSON file.
-        """
-        saved_count = 0
-        now_iso = datetime.now().isoformat()
-
-        for file_path, metadata in file_metadata_map.items():
-            json_path = self.file_manager.get_json_path(file_path)
-            sha256 = file_hash_map.get(file_path)
-        
-            # Build a new OrderedDict so sha256 is first
-            out: "OrderedDict[str,Any]" = OrderedDict()
-            out["sha256"] = sha256
-            if metadata:
-                # metadata is the dict returned by client.get_model_by_hash()
-                # It already contains modelId, modelVersionId, etc.
-                for k, v in metadata.items():
-                    # skip computed_hash if present (we already have sha256)
-                    if k == "computed_hash":
-                        continue
-                    out[k] = v
-            else:
-                out["civitai_not_found"] = True
-
-            # always add/update last_updated
-            out["last_updated"] = now_iso
-
-            if self.file_manager.save_json(json_path, out):
-                saved_count += 1
-            else:
-                logger.error(f"Failed to save JSON for {file_path.name}")
-
-        return saved_count
-
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """
         Process entire directory: compute hashes, fetch metadata, save results
@@ -284,9 +259,7 @@ class CivitaiProcessor:
             
         Returns:
             Dictionary containing processing results and statistics
-        """
-        from .progress_handler import StatusDisplay
-        
+        """        
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")
         
         # Analyze directory for hash computation
@@ -341,18 +314,29 @@ class CivitaiProcessor:
                 else:
                     logger.warning(f"No hash available for {file_path.name}")
             
-            # Fetch metadata from Civitai only for files that need it
             metadata_results = {}
             if metadata_file_hashes:
+                # 1) Fetch initial metadata by hash
                 metadata_results = self.fetch_civitai_metadata(metadata_file_hashes)
-                
-                # Count successful metadata fetches
-                metadata_found = sum(1 for metadata in metadata_results.values() if metadata is not None)
-                results['stats']['metadata_fetched'] = metadata_found
-                
-                # Save results to JSON files
-                saved_count = self.save_metadata_to_json(metadata_results, metadata_file_hashes)
-                results['stats']['files_saved'] = saved_count
+
+                for file_path, initial_meta in metadata_results.items():
+                    sha256 = metadata_file_hashes[file_path]
+                    json_path = self.file_manager.get_json_path(file_path)
+
+                    # 2) Instantiate saver and write initial + placeholder additional
+                    saver = MetadataSaver(json_path)
+                    # initial_meta may be None if not found
+                    # Attempt to fetch the "additional" data by version/model IDs
+                    additional_meta = None
+                    if initial_meta:
+                        version_id = initial_meta.get('id')
+                        model_id   = initial_meta.get('modelId')
+                        additional_meta = saver.fetch_additional_metadata(version_id, model_id)
+
+                    if saver.write_metadata(sha256, initial_meta or {}, additional_meta):
+                        results['stats']['files_saved'] += 1
+                    else:
+                        logger.error(f"Failed to save JSON for {file_path.name}")
             
             # Download images if requested
             if download_images and metadata_results:
