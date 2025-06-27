@@ -9,6 +9,7 @@ A powerful command-line tool for syncing safetensor model metadata and preview i
 3. [Getting Started](#getting-started)
    * [Prerequisites](#prerequisites)
    * [Installation](#installation)
+   * [Uninstall](#uninstall)
 4. [Command Line Options](#command-line-options)
 5. [Usage](#usage)
    * [Basic Usage](#basic-usage)
