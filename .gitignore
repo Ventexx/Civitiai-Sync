@@ -13,6 +13,7 @@ venv/
 dist/
 build/
 \*.egg-info/
+civitai_sync.egg-info/
 
 # Installer logs
 

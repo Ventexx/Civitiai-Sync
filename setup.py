@@ -5,9 +5,7 @@ Setup script for Civitai Sync
 from setuptools import setup, find_packages
 from pathlib import Path
 
-# Read the README file
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
 # Read requirements
 requirements = []
@@ -19,8 +17,6 @@ setup(
     version="0.0.6",
     author="Ventexx",
     description="Sync safetensor model metadata and images from Civitai",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
     packages=find_packages(),
     py_modules=['main'],
     install_requires=requirements,
@@ -32,7 +28,7 @@ setup(
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Attribution-NonCommercial 4.0 International",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
