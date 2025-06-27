@@ -111,7 +111,7 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
             header_length = int.from_bytes(header_length_bytes, byteorder='little')
             
             # Reasonable bounds check for header length
-            if header_length < 10 or header_length > 100000:
+            if header_length < 10 or header_length > (file_size - 8):
                 logger.debug(f"Invalid header length {header_length}: {file_path.name}")
                 return False
             

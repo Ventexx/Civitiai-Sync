@@ -12,7 +12,7 @@ if (this_directory / "requirements.txt").exists():
 
 setup(
     name="civitai-sync",
-    version="0.1.2",
+    version="1.0.0",
     author="Ventexx",
     description="Sync safetensor model metadata and images from Civitai",
     packages=find_packages(),  
