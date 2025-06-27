@@ -8,11 +8,9 @@ from pathlib import Path
 import argparse
 import logging
 
-# allow imports from the src/ folder
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from civitai_processor import CivitaiProcessor
-from config_manager import ConfigManager
+from civitai_sync.civitai_processor import CivitaiProcessor
+from civitai_sync.config_manager import ConfigManager
+from civitai_sync.progress_handler import StatusDisplay
 
 
 def setup_logging(verbose: bool = False):
@@ -97,9 +95,6 @@ def main():
     )
     
     args = parser.parse_args()
-    
-    # Import status display
-    from src.progress_handler import StatusDisplay
     
     # Handle API key saving
     if args.save_api_key:

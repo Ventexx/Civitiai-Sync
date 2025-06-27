@@ -17,12 +17,12 @@ setup(
     version="0.0.6",
     author="Ventexx",
     description="Sync safetensor model metadata and images from Civitai",
-    packages=find_packages(),
-    py_modules=['main'],
+    package_dir={"": "civitai_sync"},
+    packages=find_packages(where="civitai_sync"),
     install_requires=requirements,
     entry_points={
-        'console_scripts': [
-            'civitai-sync=main:main',
+        "console_scripts": [
+            "civitai-sync=civitai_sync.main:main",
         ],
     },
     classifiers=[
