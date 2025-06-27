@@ -54,18 +54,31 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
    cd civitai-sync
    ```
 
-2. Install dependencies:
+Standard Install (for end users):
+    ```bash
+    pip install .
+    ```
+    
+    - Copies the package into your Python environment’s site-packages.
+    - You can safely delete the repository afterward.
+    - **API key location:**
+        - Windows:
+            ```text
+            C:\Users\<YourUsername>\.civitai-sync\config.json
+            ```bash
+        - macOS/Linux:
+            ```bash
+            ~/.civitai-sync/config.json
+            ```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+3. Development Install (for contributors):
+    ```bash
+    pip install -e .
+    ```
 
-3. (Optional) Make the script executable:
-
-   ```bash
-   chmod +x main.py
-   ```
-
+    - Creates an editable link in site-packages pointing to your local code.
+    - Changes in your working directory are reflected immediately.
+    - Do not delete the repository when using editable mode.
 ---
 
 ## Command Line Options
