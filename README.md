@@ -50,11 +50,12 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 1. Clone this repository and navigate into it:
 
    ```
-   git clone <repository-url>
+   git clone https://github.com/Ventexx/Civitiai-Sync.git
    cd civitai-sync
    ```
 
-Standard Install (for end users):
+2. Standard Install (for end users):
+   
     ```
     pip install .
     ```
@@ -62,15 +63,18 @@ Standard Install (for end users):
     - You can safely delete the repository afterward.
     - **API key location:**
         - Windows:
+          
             ```
             C:\Users\<YourUsername>\.civitai-sync\config.json
             ```
         - macOS/Linux:
+          
             ```
             ~/.civitai-sync/config.json
             ```
 
 3. Development Install (for contributors):
+   
     ```
     pip install -e .
     ```
@@ -110,7 +114,7 @@ python main.py /path/to/your/models
 
 For better rate limits and access to more features:
 
-```bash
+```
 python main.py /path/to/your/models --api-key YOUR_API_KEY
 ```
 
@@ -118,7 +122,7 @@ python main.py /path/to/your/models --api-key YOUR_API_KEY
 
 Save your API key for future use:
 
-```bash
+```
 python main.py --save-api-key YOUR_API_KEY
 ```
 
@@ -126,13 +130,13 @@ python main.py --save-api-key YOUR_API_KEY
 
 Include preview images in the sync:
 
-```bash
+```
 python main.py /path/to/your/models --img
 ```
 
 ### Advanced Options
 
-```bash
+```
 python main.py /path/to/your/models \
   --api-key YOUR_API_KEY \
   --img \
