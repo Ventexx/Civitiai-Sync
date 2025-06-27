@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+
+**pycache**/
+\*.py\[cod]
+
+# Virtual environments
+
+venv/
+.env/
+
+# Distribution / packaging
+
+dist/
+build/
+\*.egg-info/
+
+# Installer logs
+
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+
+.pytest\_cache/
+
+# IDE/editor folders
+
+.vscode/
+.idea/
+
+# OS files
+
+.DS\_Store
+Thumbs.db
