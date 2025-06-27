@@ -6,19 +6,16 @@ from setuptools import setup, find_packages
 from pathlib import Path
 
 this_directory = Path(__file__).parent
-
-# Read requirements
 requirements = []
 if (this_directory / "requirements.txt").exists():
     requirements = (this_directory / "requirements.txt").read_text().strip().split('\n')
 
 setup(
     name="civitai-sync",
-    version="0.0.6",
+    version="0.1.2",
     author="Ventexx",
     description="Sync safetensor model metadata and images from Civitai",
-    package_dir={"": "civitai_sync"},
-    packages=find_packages(where="civitai_sync"),
+    packages=find_packages(),  
     install_requires=requirements,
     entry_points={
         "console_scripts": [

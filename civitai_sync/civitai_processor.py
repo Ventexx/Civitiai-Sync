@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from collections import OrderedDict
 
 from .civitai_api import CivitaiAPIClient
 from .file_manager import FileManager
@@ -239,62 +240,40 @@ class CivitaiProcessor:
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
 
-    def save_metadata_to_json(self, file_metadata_map: Dict[Path, Optional[Dict[Any, Any]]], 
-                             file_hash_map: Dict[Path, str]) -> int:
-        """
-        Save metadata to corresponding JSON files
+    def save_metadata_to_json(self, file_metadata_map, file_hash_map) -> int:
+    """
+    Save SHA256 + Civitai metadata flattened into the JSON file.
+    """
+    saved_count = 0
+    now_iso = datetime.now().isoformat()
+
+    for file_path, metadata in file_metadata_map.items():
+        json_path = self.file_manager.get_json_path(file_path)
+        sha256 = file_hash_map.get(file_path)
         
-        Args:
-            file_metadata_map: Dictionary mapping file paths to their metadata
-            file_hash_map: Dictionary mapping file paths to their hashes
-            
-        Returns:
-            Number of files successfully saved
-        """
-        from .progress_handler import ProgressBar
-        
-        saved_count = 0
-        current_time = datetime.now().isoformat()
-        
-        if not file_metadata_map:
-            return 0
-        
-        # Create progress bar for saving files
-        progress = ProgressBar(len(file_metadata_map), "Saving metadata to JSON files...")
-        
-        for i, (file_path, metadata) in enumerate(file_metadata_map.items(), 1):
-            json_path = self.file_manager.get_json_path(file_path)
-            hash_value = file_hash_map.get(file_path)
-            
-            # Load existing JSON if it exists
-            existing_data = self.file_manager.load_existing_json(json_path) or {}
-            
-            # Create the data to save
-            json_data = {
-                **existing_data,
-                'computed_hash': hash_value,
-                'last_updated': current_time,
-            }
-            
-            # Add Civitai metadata if available
-            if metadata:
-                json_data['civitai_metadata'] = metadata
-                # Remove the not_found flag if it exists
-                json_data.pop('civitai_not_found', None)
-            else:
-                json_data['civitai_metadata'] = None
-                json_data['civitai_not_found'] = True
-            
-            # Save to JSON file
-            if self.file_manager.save_json(json_path, json_data):
-                saved_count += 1
-            else:
-                logger.error(f"Failed to save JSON for {file_path.name}")
-            
-            progress.update(i)
-        
-        progress.finish(f"Metadata saving completed - {saved_count} files saved")
-        return saved_count
+        # Build a new OrderedDict so sha256 is first
+        out: "OrderedDict[str,Any]" = OrderedDict()
+        out["sha256"] = sha256
+        if metadata:
+            # metadata is the dict returned by client.get_model_by_hash()
+            # It already contains modelId, modelVersionId, etc.
+            for k, v in metadata.items():
+                # skip computed_hash if present (we already have sha256)
+                if k == "computed_hash":
+                    continue
+                out[k] = v
+        else:
+            out["civitai_not_found"] = True
+
+        # always add/update last_updated
+        out["last_updated"] = now_iso
+
+        if self.file_manager.save_json(json_path, out):
+            saved_count += 1
+        else:
+            logger.error(f"Failed to save JSON for {file_path.name}")
+
+    return saved_count
 
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """
