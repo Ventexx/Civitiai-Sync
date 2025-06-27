@@ -81,6 +81,13 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
     - Creates an editable link in site-packages pointing to your local code.
     - Changes in your working directory are reflected immediately.
     - Do not delete the repository when using editable mode.
+
+### Uninstall
+
+    ```
+    pip uninstall civitai-sync
+    ```
+
 ---
 
 ## Command Line Options
