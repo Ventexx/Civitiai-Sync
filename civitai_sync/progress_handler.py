@@ -59,8 +59,10 @@ class ProgressBar:
         progress = min(self.current / self.total, 1.0)
         filled_width = int(self.width * progress)
         
-        # Create progress bar
-        bar = '█' * filled_width + '░' * (self.width - filled_width)
+        # Create progress bar with subtle styling
+        filled_char = '━'
+        empty_char = '─'
+        bar = filled_char * filled_width + empty_char * (self.width - filled_width)
         
         # Calculate percentage
         percentage = progress * 100
@@ -73,18 +75,59 @@ class ProgressBar:
         else:
             eta_str = ""
         
-        # Format the line
+        # Format the line with minimal but clear styling
         line = f"\r{self.description}\n({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
         
-        # Clear previous lines and write new content
-        sys.stdout.write('\033[2K\033[1A\033[2K')  # Clear current and previous line
-        sys.stdout.write(line)
+        # Clear previous lines and write new content       
+        if self.current == 1:
+            # First update - just write the line
+            sys.stdout.write(line)
+        else:
+            # Subsequent updates - clear previous progress line only
+            sys.stdout.write('\033[1A\033[2K') # Go up one line and clear it
+            sys.stdout.write(line)
+
         sys.stdout.flush()
         
         # Add newline when complete
         if self.current >= self.total:
             sys.stdout.write('\n')
             sys.stdout.flush()
+
+    @staticmethod
+    def print_results(stats: dict):
+        """Print processing results in a clean, organized format with icons"""
+        total_time = StatusDisplay.get_elapsed_time()
+    
+        print(f"\n┌─ Sync completed in {total_time}")
+        print(f"│ 📁 Files processed: {stats['total_files']}")
+    
+        # Show detailed stats with subtle indentation and appropriate icons
+        details = []
+        if stats.get('hashes_computed', 0) > 0:
+            details.append(f"🔢 Hashes computed: {stats['hashes_computed']}")
+    
+        if stats.get('metadata_fetched', 0) > 0:
+            details.append(f"📋 Metadata fetched: {stats['metadata_fetched']}")
+    
+        if stats.get('files_saved', 0) > 0:
+            details.append(f"💾 Files saved: {stats['files_saved']}")
+    
+        if stats.get('images_downloaded', 0) > 0:
+            details.append(f"🖼️ Images downloaded: {stats['images_downloaded']}")
+    
+        if stats.get('not_found', 0) > 0:
+            details.append(f"❓ Not found on Civitai: {stats['not_found']}")
+    
+        # Print details with consistent formatting
+        for detail in details:
+            print(f"│ {detail}")
+    
+        # Handle errors
+        if stats.get('errors') and len(stats['errors']) > 0:
+            print(f"│ ❌ Errors encountered: {len(stats['errors'])}")
+    
+        print("└─")
     
     def _format_time(self, seconds: float) -> str:
         """Format time in seconds to human readable format"""
@@ -146,63 +189,72 @@ class StatusDisplay:
     
     @staticmethod
     def print_header(message: str):
-        """Print a header message and start timing"""
+        """Print a header message with subtle styling"""
         StatusDisplay.start_timing()
-        print(f"\n→ {message}")
+        print(f"\n┌─ {message}")
     
     @staticmethod
     def print_success(message: str):
-        """Print a success message with timestamp"""
+        """Print a success message with minimal styling"""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
-        print(f"{timestamp} - SUCCESS - {message}")
+        print(f"{timestamp} ✓ {message}")
     
     @staticmethod
     def print_warning(message: str):
-        """Print a warning message with timestamp"""
+        """Print a warning message"""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
-        print(f"{timestamp} - WARNING - {message}")
+        print(f"{timestamp} ⚠ {message}")
     
     @staticmethod
     def print_error(message: str):
-        """Print an error message with timestamp"""
+        """Print an error message"""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
-        print(f"{timestamp} - ERROR - {message}", file=sys.stderr)
+        print(f"{timestamp} ✗ {message}", file=sys.stderr)
     
     @staticmethod
     def print_info(message: str):
-        """Print an info message with timestamp"""
+        """Print an info message with clean formatting"""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
-        print(f"{timestamp} - INFO - {message}")
+        print(f"{timestamp} · {message}")
     
     @staticmethod
     def print_results(stats: dict):
-        """Print processing results in a clean, minimal format"""
+        """Print processing results in a clean, organized format"""
         total_time = StatusDisplay.get_elapsed_time()
         
-        print(f"\nSync completed in {total_time}")
-        print(f"Files processed: {stats['total_files']}")
+        print(f"\n┌─ Sync completed in {total_time}")
+        print(f"│ Files processed: {stats['total_files']}")
         
+        # Show detailed stats with subtle indentation
+        details = []
         if stats.get('hashes_computed', 0) > 0:
-            print(f"Hashes computed: {stats['hashes_computed']}")
+            details.append(f"Hashes computed: {stats['hashes_computed']}")
         
         if stats.get('metadata_fetched', 0) > 0:
-            print(f"Metadata fetched: {stats['metadata_fetched']}")
+            details.append(f"Metadata fetched: {stats['metadata_fetched']}")
         
         if stats.get('files_saved', 0) > 0:
-            print(f"Files saved: {stats['files_saved']}")
+            details.append(f"Files saved: {stats['files_saved']}")
         
         if stats.get('images_downloaded', 0) > 0:
-            print(f"Images downloaded: {stats['images_downloaded']}")
+            details.append(f"Images downloaded: {stats['images_downloaded']}")
         
         if stats.get('not_found', 0) > 0:
-            print(f"Not found on Civitai: {stats['not_found']}")
+            details.append(f"Not found on Civitai: {stats['not_found']}")
         
+        # Print details with consistent formatting
+        for detail in details:
+            print(f"│ {detail}")
+        
+        # Handle errors
         if stats.get('errors') and len(stats['errors']) > 0:
-            print(f"Errors encountered: {len(stats['errors'])}")
+            print(f"│ Errors encountered: {len(stats['errors'])}")
+        
+        print("└─")
     
     @staticmethod
     def setup_logging_formatter():
-        """Setup custom logging formatter for better display"""
+        """Setup custom logging formatter for cleaner display"""
         import logging
         
         class CustomFormatter(logging.Formatter):
@@ -212,7 +264,22 @@ class StatusDisplay:
                 level = record.levelname
                 message = record.getMessage()
                 
-                return f"{timestamp} - {logger_name} - {level} - {message}"
+                # Use simple symbols for different log levels
+                level_symbols = {
+                    'INFO': '·',
+                    'WARNING': '⚠',
+                    'ERROR': '✗',
+                    'DEBUG': '·',
+                    'CRITICAL': '✗'
+                }
+                
+                symbol = level_symbols.get(level, '·')
+                
+                # Only show logger name for non-INFO levels or when it's not the main module
+                if level != 'INFO' or logger_name not in ['civitai_processor', 'file_manager']:
+                    return f"{timestamp} {symbol} {logger_name} - {message}"
+                else:
+                    return f"{timestamp} {symbol} {message}"
         
         # Apply the custom formatter to all handlers
         logger = logging.getLogger()

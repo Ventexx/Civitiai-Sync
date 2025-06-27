@@ -367,24 +367,26 @@ class CivitaiProcessor:
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
 
+    # Add this method to the CivitaiProcessor class to replace the current process_directory results display
+
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """
         Process entire directory: compute hashes, fetch metadata, save results
-        
+    
         Args:
             download_images: Whether to download preview images
-            
+        
         Returns:
             Dictionary containing processing results and statistics
         """        
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")
-        
+    
         # Analyze directory for hash computation
         files_needing_hash, files_with_existing_hash = self.file_manager.analyze_directory()
-        
+    
         # Analyze metadata freshness
         files_needing_metadata, files_with_fresh_metadata = self.analyze_metadata_freshness()
-        
+    
         if not files_needing_hash and not files_with_existing_hash:
             StatusDisplay.print_warning("No safetensor files found in directory!")
             return {
@@ -392,13 +394,13 @@ class CivitaiProcessor:
                 'error': 'No safetensor files found',
                 'stats': {'total_files': 0}
             }
-        
+    
         results = {
             'success': True,
             'stats': {
                 'total_files': len(files_needing_hash) + len(files_with_existing_hash),
                 'files_needing_hash': len(files_needing_hash),
-                'files_with_existing_hash': len(files_with_existing_hash),
+            'files_with_existing_hash': len(files_with_existing_hash),
                 'files_needing_metadata': len(files_needing_metadata),
                 'files_with_fresh_metadata': len(files_with_fresh_metadata),
                 'hashes_computed': 0,
@@ -409,20 +411,26 @@ class CivitaiProcessor:
                 'errors': []
             }
         }
-        
+    
         try:
+            # Show initial analysis
+            StatusDisplay.print_info(f"Found {results['stats']['total_files']} safetensor files")
+            if files_needing_metadata:
+                StatusDisplay.print_info(f"{len(files_needing_metadata)} files need metadata update")
+            
             # Compute missing hashes
             computed_hashes = {}
             if files_needing_hash:
+                StatusDisplay.print_info(f"Computing hashes for {len(files_needing_hash)} files...")
                 computed_hashes = self.compute_missing_hashes(files_needing_hash)
                 results['stats']['hashes_computed'] = len(computed_hashes)
-            
+        
             # Get existing hashes
             existing_hashes = self.file_manager.get_all_hashes()
-            
+        
             # Combine all hashes for files that need metadata
             metadata_file_hashes = {}
-            
+        
             # Add computed hashes for files that need metadata
             for file_path in files_needing_metadata:
                 if file_path in computed_hashes:
@@ -431,34 +439,36 @@ class CivitaiProcessor:
                     metadata_file_hashes[file_path] = existing_hashes[str(file_path)]
                 else:
                     logger.warning(f"No hash available for {file_path.name}")
-            
+        
             # Fetch and save metadata in one pass
             if metadata_file_hashes:
+                StatusDisplay.print_info(f"Fetching metadata for {len(metadata_file_hashes)} files...")
                 metadata_stats = self.fetch_and_save_metadata(metadata_file_hashes)
                 results['stats']['metadata_fetched'] = metadata_stats['metadata_fetched']
                 results['stats']['files_saved'] = metadata_stats['files_saved']
                 results['stats']['not_found'] = metadata_stats['not_found']
                 results['stats']['errors'].extend(metadata_stats['errors'])
-            
+        
             # Download images if requested
             if download_images and metadata_file_hashes:
+                StatusDisplay.print_info("Downloading preview images...")
                 images_downloaded = self.download_images(metadata_file_hashes)
                 results['stats']['images_downloaded'] = images_downloaded
-            
-            # Display final results
+        
+            # Display final results with enhanced formatting
             StatusDisplay.print_results(results['stats'])
-            
+        
         except Exception as e:
             logger.error(f"Error during processing: {e}")
             StatusDisplay.print_error(f"Processing failed: {e}")
             results['success'] = False
             results['error'] = str(e)
             results['stats']['errors'].append(str(e))
-        
+    
         finally:
             # Clean up API client
             self.api_client.close()
-        
+    
         return results
 
 
