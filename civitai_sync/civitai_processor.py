@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from collections import OrderedDict
+import json
 
 from .civitai_api import CivitaiAPIClient
 from .file_manager import FileManager
 from .hash_utils import compute_sha256, verify_safetensor_file
-from .metadata_saver import MetadataSaver
+from .progress_handler import StatusDisplay
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +115,9 @@ class CivitaiProcessor:
         if self.refresh_metadata:
             return True
         
-        # Check if we have civitai metadata
-        if 'civitai_metadata' not in json_data or json_data['civitai_metadata'] is None:
+        # Check if we have the required metadata fields
+        required_fields = ['model', 'modelId', 'modelVersionId']
+        if not all(field in json_data for field in required_fields):
             return True
         
         # Check last update timestamp
@@ -154,58 +156,164 @@ class CivitaiProcessor:
         
         return files_needing_metadata, files_with_fresh_metadata
     
-    def fetch_civitai_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[Path, Optional[Dict[Any, Any]]]:
+    def fetch_and_save_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[str, Any]:
         """
-        Fetch metadata from Civitai for all hashes
+        Fetch metadata from Civitai and save it in the specified format
         
         Args:
             file_hash_map: Dictionary mapping file paths to their hashes
             
         Returns:
-            Dictionary mapping file paths to their Civitai metadata (or None if not found)
+            Dictionary with processing statistics
         """
         from .progress_handler import ProgressBar
         
-        metadata_results = {}
+        stats = {
+            'metadata_fetched': 0,
+            'files_saved': 0,
+            'not_found': 0,
+            'errors': []
+        }
         
         if not file_hash_map:
-            return metadata_results
+            return stats
         
         # Create progress bar for API calls
-        progress = ProgressBar(len(file_hash_map), "Fetching metadata from Civitai API...")
+        progress = ProgressBar(len(file_hash_map), "Fetching and saving metadata...")
         
         for i, (file_path, hash_value) in enumerate(file_hash_map.items(), 1):
             try:
+                # Fetch metadata from Civitai
                 metadata = self.api_client.get_model_by_hash(hash_value)
-                metadata_results[file_path] = metadata
+                
+                if metadata:
+                    stats['metadata_fetched'] += 1
+                    
+                    # Save metadata in the specified format
+                    if self.save_metadata_file(file_path, hash_value, metadata):
+                        stats['files_saved'] += 1
+                    else:
+                        stats['errors'].append(f"Failed to save metadata for {file_path.name}")
+                else:
+                    stats['not_found'] += 1
+                    # Save minimal JSON with just hash and not found flag
+                    self.save_minimal_metadata(file_path, hash_value)
+                
                 progress.update(i)
                     
             except Exception as e:
-                logger.error(f"Error fetching metadata for {file_path.name}: {e}")
-                metadata_results[file_path] = None
+                error_msg = f"Error processing {file_path.name}: {e}"
+                logger.error(error_msg)
+                stats['errors'].append(error_msg)
                 progress.update(i)
         
-        # Count successful fetches for final message
-        metadata_found = sum(1 for metadata in metadata_results.values() if metadata is not None)
-        progress.finish(f"API calls completed - {metadata_found} models found")
+        progress.finish(f"Processing completed - {stats['metadata_fetched']} models found")
         
-        return metadata_results
+        return stats
 
-    def fetch_additional_metadata(self, version_id: int, model_id: int) -> Dict[str, Any]:
+    def save_metadata_file(self, file_path: Path, sha256_hash: str, metadata: Dict[Any, Any]) -> bool:
         """
-        Call out to MetadataSaver.fetch_additional_metadata (stub) so that
-        when the real endpoint exists, you’ll just need to implement it there.
-        """
-        return MetadataSaver(Path()).fetch_additional_metadata(
-            self.api_client, version_id, model_id
-        )
-
-    def download_images(self, file_metadata_map: Dict[Path, Optional[Dict[Any, Any]]]) -> int:
-        """
-        Download preview images for models with metadata
+        Save metadata to JSON file in the specified format and order
         
         Args:
-            file_metadata_map: Dictionary mapping file paths to their metadata
+            file_path: Path to the safetensor file
+            sha256_hash: SHA256 hash of the file
+            metadata: Raw metadata from Civitai API
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        json_path = self.file_manager.get_json_path(file_path)
+        
+        try:
+            # Create ordered dictionary with specified structure and order
+            json_data = OrderedDict()
+            
+            # 1. SHA256 hash (always first)
+            json_data['sha256'] = sha256_hash
+            
+            # 2. Model info (extract from metadata structure)
+            model_info = OrderedDict()
+            
+            # The model info might be nested in different ways depending on the API response
+            model_data = None
+            if 'model' in metadata and isinstance(metadata['model'], dict):
+                model_data = metadata['model']
+            elif isinstance(metadata, dict):
+                # Sometimes the model info is at the top level
+                model_data = metadata
+            
+            if model_data:
+                model_info['name'] = model_data.get('name', '')
+                model_info['type'] = model_data.get('type', '')
+                model_info['nsfw'] = model_data.get('nsfw', False)
+                model_info['poi'] = model_data.get('poi', False)
+            
+            json_data['model'] = model_info
+            
+            # 3. Model ID
+            json_data['modelId'] = metadata.get('modelId')
+            
+            # 4. Model Version ID (renamed from 'id')
+            json_data['modelVersionId'] = metadata.get('id')
+            
+            # 5. Trained Words
+            json_data['trainedWords'] = metadata.get('trainedWords', [])
+            
+            # 6. Base Model
+            json_data['baseModel'] = metadata.get('baseModel', '')
+            
+            # 7. Add timestamp
+            json_data['last_updated'] = datetime.now().isoformat()
+            
+            # Save to file
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            with json_path.open('w', encoding='utf-8') as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Saved metadata: {json_path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save metadata for {file_path.name}: {e}")
+            return False
+
+    def save_minimal_metadata(self, file_path: Path, sha256_hash: str) -> bool:
+        """
+        Save minimal metadata for files not found on Civitai
+        
+        Args:
+            file_path: Path to the safetensor file
+            sha256_hash: SHA256 hash of the file
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        json_path = self.file_manager.get_json_path(file_path)
+        
+        try:
+            json_data = OrderedDict()
+            json_data['sha256'] = sha256_hash
+            json_data['civitai_not_found'] = True
+            json_data['last_updated'] = datetime.now().isoformat()
+            
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            with json_path.open('w', encoding='utf-8') as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Saved minimal metadata: {json_path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save minimal metadata for {file_path.name}: {e}")
+            return False
+
+    def download_images(self, file_hash_map: Dict[Path, str]) -> int:
+        """
+        Download preview images for models that have metadata
+        
+        Args:
+            file_hash_map: Dictionary mapping file paths to their hashes
             
         Returns:
             Number of images successfully downloaded
@@ -214,14 +322,14 @@ class CivitaiProcessor:
         
         downloaded_count = 0
         
-        # Count files that have images to download
-        files_with_images = []
-        for file_path, metadata in file_metadata_map.items():
-            if not metadata:
-                continue
+        # Find files that have metadata and need images
+        files_needing_images = []
+        for file_path in file_hash_map.keys():
+            json_path = self.file_manager.get_json_path(file_path)
+            json_data = self.file_manager.load_existing_json(json_path)
             
-            image_url = self.api_client.get_primary_image_url(metadata)
-            if not image_url:
+            # Skip if no metadata or not found on Civitai
+            if not json_data or json_data.get('civitai_not_found'):
                 continue
                 
             preview_path = file_path.with_suffix('.preview.png')
@@ -230,18 +338,27 @@ class CivitaiProcessor:
             if preview_path.exists() and not self.refresh_metadata:
                 continue
                 
-            files_with_images.append((file_path, image_url, preview_path))
+            files_needing_images.append(file_path)
         
-        if not files_with_images:
+        if not files_needing_images:
             return 0
         
         # Create progress bar for image downloads
-        progress = ProgressBar(len(files_with_images), "Downloading preview images...")
+        progress = ProgressBar(len(files_needing_images), "Downloading preview images...")
         
-        for i, (file_path, image_url, preview_path) in enumerate(files_with_images):
+        for i, file_path in enumerate(files_needing_images):
             try:
-                if self.api_client.download_image(image_url, preview_path):
-                    downloaded_count += 1
+                # Get metadata to find image URL
+                hash_value = file_hash_map[file_path]
+                metadata = self.api_client.get_model_by_hash(hash_value)
+                
+                if metadata:
+                    image_url = self.api_client.get_primary_image_url(metadata)
+                    if image_url:
+                        preview_path = file_path.with_suffix('.preview.png')
+                        if self.api_client.download_image(image_url, preview_path):
+                            downloaded_count += 1
+                
                 progress.update(i + 1)
             except Exception as e:
                 logger.error(f"Error downloading image for {file_path.name}: {e}")
@@ -287,6 +404,7 @@ class CivitaiProcessor:
                 'hashes_computed': 0,
                 'metadata_fetched': 0,
                 'files_saved': 0,
+                'not_found': 0,
                 'images_downloaded': 0,
                 'errors': []
             }
@@ -314,33 +432,17 @@ class CivitaiProcessor:
                 else:
                     logger.warning(f"No hash available for {file_path.name}")
             
-            metadata_results = {}
+            # Fetch and save metadata in one pass
             if metadata_file_hashes:
-                # 1) Fetch initial metadata by hash
-                metadata_results = self.fetch_civitai_metadata(metadata_file_hashes)
-
-                for file_path, initial_meta in metadata_results.items():
-                    sha256 = metadata_file_hashes[file_path]
-                    json_path = self.file_manager.get_json_path(file_path)
-
-                    # 2) Instantiate saver and write initial + placeholder additional
-                    saver = MetadataSaver(json_path)
-                    # initial_meta may be None if not found
-                    # Attempt to fetch the "additional" data by version/model IDs
-                    additional_meta = None
-                    if initial_meta:
-                        version_id = initial_meta.get('id')
-                        model_id   = initial_meta.get('modelId')
-                        additional_meta = saver.fetch_additional_metadata(version_id, model_id)
-
-                    if saver.write_metadata(sha256, initial_meta or {}, additional_meta):
-                        results['stats']['files_saved'] += 1
-                    else:
-                        logger.error(f"Failed to save JSON for {file_path.name}")
+                metadata_stats = self.fetch_and_save_metadata(metadata_file_hashes)
+                results['stats']['metadata_fetched'] = metadata_stats['metadata_fetched']
+                results['stats']['files_saved'] = metadata_stats['files_saved']
+                results['stats']['not_found'] = metadata_stats['not_found']
+                results['stats']['errors'].extend(metadata_stats['errors'])
             
             # Download images if requested
-            if download_images and metadata_results:
-                images_downloaded = self.download_images(metadata_results)
+            if download_images and metadata_file_hashes:
+                images_downloaded = self.download_images(metadata_file_hashes)
                 results['stats']['images_downloaded'] = images_downloaded
             
             # Display final results
@@ -358,6 +460,7 @@ class CivitaiProcessor:
             self.api_client.close()
         
         return results
+
 
 def process_civitai_directory(folder_path: str, api_key: Optional[str] = None, 
                              rate_limit_delay: float = 1.0, refresh_metadata: bool = False,
