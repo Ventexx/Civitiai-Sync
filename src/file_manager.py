@@ -199,7 +199,8 @@ class FileManager:
         Returns:
             Dictionary with counts of cleaned files
         """
-        safetensor_files = set(self.find_safetensor_files())
+        # Use resolved paths for accurate matching
+        safetensor_files = {p.resolve() for p in self.find_safetensor_files()}
         
         # Find all JSON and preview files
         json_files = list(self.folder_path.glob('*.json')) + list(self.folder_path.glob('**/*.json'))
@@ -210,34 +211,39 @@ class FileManager:
         
         # Check JSON files
         for json_file in json_files:
-            # Find corresponding safetensor file
-            safetensor_file = json_file.with_suffix('.safetensors')
+            # Resolve and match
+            json_resolved = json_file.resolve()
+            safetensor_file = (json_file.with_suffix('.safetensors')).resolve()
             if not safetensor_file.exists():
                 safetensor_file = json_file.with_suffix('.safetensor')
             
             if safetensor_file not in safetensor_files:
                 try:
-                    json_file.unlink()
+                    json_resolved.unlink()
                     cleaned_json += 1
                     logger.info(f"Removed orphaned JSON: {json_file.name}")
+                except PermissionError as e:
+                    logger.error(f"Permission denied removing {json_file}: {e}")
                 except Exception as e:
-                    logger.error(f"Failed to remove {json_file}: {e}")
+                    logger.error(f"Failed to remove orphaned JSON {json_file}: {e}")
         
         # Check preview files
         for preview_file in preview_files:
-            # Find corresponding safetensor file
+            preview_resolved = preview_file.resolve()
             base_name = preview_file.name.replace('.preview.png', '')
-            safetensor_file = preview_file.parent / f"{base_name}.safetensors"
+            safetensor_file = (preview_file.parent / f"{base_name}.safetensors").resolve()
             if not safetensor_file.exists():
-                safetensor_file = preview_file.parent / f"{base_name}.safetensor"
+                safetensor_file = (preview_file.parent / f"{base_name}.safetensor").resolve()
             
             if safetensor_file not in safetensor_files:
                 try:
-                    preview_file.unlink()
+                    preview_resolved.unlink()
                     cleaned_previews += 1
                     logger.info(f"Removed orphaned preview: {preview_file.name}")
+                except PermissionError as e:
+                    logger.error(f"Permission denied removing {preview_file}: {e}")
                 except Exception as e:
-                    logger.error(f"Failed to remove {preview_file}: {e}")
+                    logger.error(f"Failed to remove orphaned preview {preview_file}: {e}")
         
         return {
             'json_files_cleaned': cleaned_json,

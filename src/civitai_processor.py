@@ -54,6 +54,11 @@ class CivitaiProcessor:
             else:
                 logger.warning(f"Invalid or corrupted safetensor file: {file_path.name}")
         
+        if files and not valid_files:
+            # All files failed validation
+            logger.error("All safetensor files are invalid or corrupted; aborting.")
+            raise ValueError("No valid safetensor files found")
+
         return valid_files
     
     def compute_missing_hashes(self, files_needing_hash: List[Path]) -> Dict[Path, str]:
@@ -66,6 +71,8 @@ class CivitaiProcessor:
         Returns:
             Dictionary mapping file paths to their computed hashes
         """
+        from .progress_handler import ProgressBar
+        
         computed_hashes = {}
         
         # Validate files first
@@ -74,13 +81,22 @@ class CivitaiProcessor:
         if len(valid_files) != len(files_needing_hash):
             logger.warning(f"Skipping {len(files_needing_hash) - len(valid_files)} invalid files")
         
-        for file_path in valid_files:
+        if not valid_files:
+            return computed_hashes
+        
+        # Create progress bar for hash computation
+        progress = ProgressBar(len(valid_files), "Computing SHA256 hashes...")
+        
+        for i, file_path in enumerate(valid_files):
             try:
-                hash_value = compute_sha256(file_path)
+                hash_value = compute_sha256(file_path, quiet=True)
                 computed_hashes[file_path] = hash_value
+                progress.update(i + 1)
             except Exception as e:
                 logger.error(f"Failed to compute hash for {file_path.name}: {e}")
+                progress.update(i + 1)
         
+        progress.finish("Hash computation completed")
         return computed_hashes
     
     def is_metadata_stale(self, json_data: Dict[Any, Any]) -> bool:
@@ -146,29 +162,33 @@ class CivitaiProcessor:
         Returns:
             Dictionary mapping file paths to their Civitai metadata (or None if not found)
         """
+        from .progress_handler import ProgressBar
+        
         metadata_results = {}
         
-        total_files = len(file_hash_map)
-        logger.info(f"Fetching Civitai metadata for {total_files} files...")
+        if not file_hash_map:
+            return metadata_results
+        
+        # Create progress bar for API calls
+        progress = ProgressBar(len(file_hash_map), "Fetching metadata from Civitai API...")
         
         for i, (file_path, hash_value) in enumerate(file_hash_map.items(), 1):
-            logger.info(f"Processing {i}/{total_files}: {file_path.name}")
-            
             try:
                 metadata = self.api_client.get_model_by_hash(hash_value)
                 metadata_results[file_path] = metadata
-                
-                if metadata:
-                    logger.info(f"✓ Found metadata for {file_path.name}")
-                else:
-                    logger.info(f"✗ No metadata found for {file_path.name}")
+                progress.update(i)
                     
             except Exception as e:
                 logger.error(f"Error fetching metadata for {file_path.name}: {e}")
                 metadata_results[file_path] = None
+                progress.update(i)
+        
+        # Count successful fetches for final message
+        metadata_found = sum(1 for metadata in metadata_results.values() if metadata is not None)
+        progress.finish(f"API calls completed - {metadata_found} models found")
         
         return metadata_results
-    
+
     def download_images(self, file_metadata_map: Dict[Path, Optional[Dict[Any, Any]]]) -> int:
         """
         Download preview images for models with metadata
@@ -179,40 +199,46 @@ class CivitaiProcessor:
         Returns:
             Number of images successfully downloaded
         """
+        from .progress_handler import ProgressBar
+        
         downloaded_count = 0
         
-        logger.info("Starting image download process...")
-        
+        # Count files that have images to download
+        files_with_images = []
         for file_path, metadata in file_metadata_map.items():
             if not metadata:
                 continue
             
-            # Get primary image URL
             image_url = self.api_client.get_primary_image_url(metadata)
             if not image_url:
-                logger.debug(f"No image found for {file_path.name}")
                 continue
-            
-            # Create preview image path
+                
             preview_path = file_path.with_suffix('.preview.png')
             
             # Skip if image already exists and we're not forcing refresh
             if preview_path.exists() and not self.refresh_metadata:
-                logger.debug(f"Preview image already exists: {preview_path.name}")
                 continue
-            
-            # Download image
+                
+            files_with_images.append((file_path, image_url, preview_path))
+        
+        if not files_with_images:
+            return 0
+        
+        # Create progress bar for image downloads
+        progress = ProgressBar(len(files_with_images), "Downloading preview images...")
+        
+        for i, (file_path, image_url, preview_path) in enumerate(files_with_images):
             try:
                 if self.api_client.download_image(image_url, preview_path):
                     downloaded_count += 1
-                else:
-                    logger.warning(f"Failed to download image for {file_path.name}")
+                progress.update(i + 1)
             except Exception as e:
                 logger.error(f"Error downloading image for {file_path.name}: {e}")
+                progress.update(i + 1)
         
-        logger.info(f"Downloaded {downloaded_count} preview images")
+        progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
-    
+
     def save_metadata_to_json(self, file_metadata_map: Dict[Path, Optional[Dict[Any, Any]]], 
                              file_hash_map: Dict[Path, str]) -> int:
         """
@@ -225,10 +251,18 @@ class CivitaiProcessor:
         Returns:
             Number of files successfully saved
         """
+        from .progress_handler import ProgressBar
+        
         saved_count = 0
         current_time = datetime.now().isoformat()
         
-        for file_path, metadata in file_metadata_map.items():
+        if not file_metadata_map:
+            return 0
+        
+        # Create progress bar for saving files
+        progress = ProgressBar(len(file_metadata_map), "Saving metadata to JSON files...")
+        
+        for i, (file_path, metadata) in enumerate(file_metadata_map.items(), 1):
             json_path = self.file_manager.get_json_path(file_path)
             hash_value = file_hash_map.get(file_path)
             
@@ -237,9 +271,9 @@ class CivitaiProcessor:
             
             # Create the data to save
             json_data = {
+                **existing_data,
                 'computed_hash': hash_value,
                 'last_updated': current_time,
-                **existing_data  # Preserve any existing data
             }
             
             # Add Civitai metadata if available
@@ -256,9 +290,12 @@ class CivitaiProcessor:
                 saved_count += 1
             else:
                 logger.error(f"Failed to save JSON for {file_path.name}")
+            
+            progress.update(i)
         
+        progress.finish(f"Metadata saving completed - {saved_count} files saved")
         return saved_count
-    
+
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """
         Process entire directory: compute hashes, fetch metadata, save results
@@ -269,7 +306,9 @@ class CivitaiProcessor:
         Returns:
             Dictionary containing processing results and statistics
         """
-        logger.info(f"Starting processing of directory: {self.folder_path}")
+        from .progress_handler import StatusDisplay
+        
+        StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")
         
         # Analyze directory for hash computation
         files_needing_hash, files_with_existing_hash = self.file_manager.analyze_directory()
@@ -278,7 +317,7 @@ class CivitaiProcessor:
         files_needing_metadata, files_with_fresh_metadata = self.analyze_metadata_freshness()
         
         if not files_needing_hash and not files_with_existing_hash:
-            logger.warning("No safetensor files found in directory!")
+            StatusDisplay.print_warning("No safetensor files found in directory!")
             return {
                 'success': False,
                 'error': 'No safetensor files found',
@@ -305,7 +344,6 @@ class CivitaiProcessor:
             # Compute missing hashes
             computed_hashes = {}
             if files_needing_hash:
-                logger.info(f"Computing hashes for {len(files_needing_hash)} files...")
                 computed_hashes = self.compute_missing_hashes(files_needing_hash)
                 results['stats']['hashes_computed'] = len(computed_hashes)
             
@@ -327,7 +365,6 @@ class CivitaiProcessor:
             # Fetch metadata from Civitai only for files that need it
             metadata_results = {}
             if metadata_file_hashes:
-                logger.info(f"Fetching Civitai metadata for {len(metadata_file_hashes)} files...")
                 metadata_results = self.fetch_civitai_metadata(metadata_file_hashes)
                 
                 # Count successful metadata fetches
@@ -335,20 +372,20 @@ class CivitaiProcessor:
                 results['stats']['metadata_fetched'] = metadata_found
                 
                 # Save results to JSON files
-                logger.info("Saving results to JSON files...")
                 saved_count = self.save_metadata_to_json(metadata_results, metadata_file_hashes)
                 results['stats']['files_saved'] = saved_count
             
             # Download images if requested
             if download_images and metadata_results:
-                logger.info("Starting image download process...")
                 images_downloaded = self.download_images(metadata_results)
                 results['stats']['images_downloaded'] = images_downloaded
             
-            logger.info(f"Processing complete! Stats: {results['stats']}")
+            # Display final results
+            StatusDisplay.print_results(results['stats'])
             
         except Exception as e:
             logger.error(f"Error during processing: {e}")
+            StatusDisplay.print_error(f"Processing failed: {e}")
             results['success'] = False
             results['error'] = str(e)
             results['stats']['errors'].append(str(e))
@@ -358,7 +395,6 @@ class CivitaiProcessor:
             self.api_client.close()
         
         return results
-
 
 def process_civitai_directory(folder_path: str, api_key: Optional[str] = None, 
                              rate_limit_delay: float = 1.0, refresh_metadata: bool = False,

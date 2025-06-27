@@ -3,13 +3,16 @@
 Civitai Sync - CLI tool for syncing safetensor model metadata and images from Civitai
 """
 
-import argparse
 import sys
-import logging
 from pathlib import Path
+import argparse
+import logging
 
-from src.civitai_processor import CivitaiProcessor
-from src.config_manager import ConfigManager
+# allow imports from the src/ folder
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from civitai_processor import CivitaiProcessor
+from config_manager import ConfigManager
 
 
 def setup_logging(verbose: bool = False):
@@ -95,12 +98,15 @@ def main():
     
     args = parser.parse_args()
     
+    # Import status display
+    from src.progress_handler import StatusDisplay
+    
     # Handle API key saving
     if args.save_api_key:
         if save_api_key(args.save_api_key):
-            print("✓ API key saved successfully")
+            StatusDisplay.print_success("API key saved successfully")
         else:
-            print("✗ Failed to save API key", file=sys.stderr)
+            StatusDisplay.print_error("Failed to save API key")
             return 1
         
         # If only saving API key, exit here
@@ -113,11 +119,11 @@ def main():
     
     folder_path = Path(args.folder_path)
     if not folder_path.exists():
-        print(f"✗ Error: Folder not found: {folder_path}", file=sys.stderr)
+        StatusDisplay.print_error(f"Folder not found: {folder_path}")
         return 1
     
     if not folder_path.is_dir():
-        print(f"✗ Error: Path is not a directory: {folder_path}", file=sys.stderr)
+        StatusDisplay.print_error(f"Path is not a directory: {folder_path}")
         return 1
     
     # Setup logging
@@ -130,7 +136,7 @@ def main():
         config_manager = ConfigManager()
         api_key = config_manager.get_api_key()
         if not api_key:
-            print("⚠️  Warning: No API key provided. Some features may be limited.")
+            StatusDisplay.print_warning("No API key provided. Some features may be limited.")
     
     try:
         # Initialize processor
@@ -143,35 +149,18 @@ def main():
         )
         
         # Process directory
-        print(f"🚀 Starting sync for: {folder_path}")
         results = processor.process_directory(download_images=args.img)
         
-        # Print results
-        if results['success']:
-            stats = results['stats']
-            print(f"\n✅ Sync completed successfully!")
-            print(f"   📁 Total files: {stats['total_files']}")
-            print(f"   🧮 Hashes computed: {stats['hashes_computed']}")
-            print(f"   📊 Metadata fetched: {stats['metadata_fetched']}")
-            print(f"   💾 Files saved: {stats['files_saved']}")
-            
-            if args.img and 'images_downloaded' in stats:
-                print(f"   🖼️  Images downloaded: {stats['images_downloaded']}")
-            
-            if stats.get('errors'):
-                print(f"   ⚠️  Errors: {len(stats['errors'])}")
-                if args.verbose:
-                    for error in stats['errors']:
-                        print(f"      • {error}")
-        else:
-            print(f"❌ Sync failed: {results.get('error', 'Unknown error')}")
+        # Handle results (success/error messages are now handled in processor)
+        if not results['success']:
+            StatusDisplay.print_error(f"Sync failed: {results.get('error', 'Unknown error')}")
             return 1
             
     except KeyboardInterrupt:
-        print("\n🛑 Interrupted by user")
+        StatusDisplay.print_info("Interrupted by user")
         return 1
     except Exception as e:
-        print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        StatusDisplay.print_error(f"Unexpected error: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()

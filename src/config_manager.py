@@ -55,7 +55,7 @@ class ConfigManager:
                 json.dump(config, f, indent=2, ensure_ascii=False)
             return True
         except IOError as e:
-            logger.error(f"Failed to save config: {e}")
+            logger.error(f"Failed to save config to {self.config_file}: {e}")
             return False
     
     def save_api_key(self, api_key: str) -> bool:

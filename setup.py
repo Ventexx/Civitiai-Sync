@@ -16,12 +16,13 @@ if (this_directory / "requirements.txt").exists():
 
 setup(
     name="civitai-sync",
-    version="1.0.0",
-    author="Civitai Sync Team",
+    version="0.0.6",
+    author="Ventexx",
     description="Sync safetensor model metadata and images from Civitai",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),
+    py_modules=['main'],
     install_requires=requirements,
     entry_points={
         'console_scripts': [

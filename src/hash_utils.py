@@ -11,13 +11,14 @@ import json
 logger = logging.getLogger(__name__)
 
 
-def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192) -> str:
+def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192, quiet: bool = False) -> str:
     """
     Compute SHA256 hash of a file with progress logging for large files
     
     Args:
         file_path: Path to the file
         chunk_size: Size of chunks to read at a time (default 8KB)
+        quiet: If True, suppress progress logging
         
     Returns:
         SHA256 hash as lowercase hexadecimal string
@@ -35,7 +36,8 @@ def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192) -> str:
         raise ValueError(f"Path is not a file: {file_path}")
     
     file_size = file_path.stat().st_size
-    logger.info(f"Computing SHA256 for: {file_path.name} ({file_size / (1024*1024):.1f} MB)")
+    if not quiet:
+        logger.debug(f"Computing SHA256 for: {file_path.name} ({file_size / (1024*1024):.1f} MB)")
     
     sha256_hash = hashlib.sha256()
     bytes_processed = 0
@@ -47,14 +49,15 @@ def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192) -> str:
                 sha256_hash.update(chunk)
                 bytes_processed += len(chunk)
                 
-                # Log progress for large files (>100MB)
-                if file_size > 100 * 1024 * 1024:
+                # Log progress for large files (>100MB) only if not quiet
+                if not quiet and file_size > 100 * 1024 * 1024:
                     progress = (bytes_processed / file_size) * 100
                     if bytes_processed % (10 * 1024 * 1024) == 0:  # Every 10MB
                         logger.debug(f"Progress: {progress:.1f}% ({bytes_processed / (1024*1024):.1f} MB)")
         
         result = sha256_hash.hexdigest().lower()
-        logger.info(f"SHA256 computed for {file_path.name}: {result[:8]}...")
+        if not quiet:
+            logger.debug(f"SHA256 computed for {file_path.name}: {result[:8]}...")
         return result
         
     except IOError as e:
