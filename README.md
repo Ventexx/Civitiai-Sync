@@ -2,6 +2,8 @@
 
 A powerful command-line tool for syncing safetensor model metadata and preview images from Civitai.
 
+---
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -21,7 +23,6 @@ A powerful command-line tool for syncing safetensor model metadata and preview i
 7. [Contact](#contact)
 8. [License](#license)
 
----
 
 ## Overview
 
@@ -104,10 +105,8 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 | `--verbose, -v` | Enable verbose logging |
 | `--quiet, -q` | Suppress output except errors |
 
----
 
 ## Usage
-
 
 ### Basic Usage
 
@@ -164,13 +163,11 @@ Your contributions are welcome!
 
 [Conventional Commits](https://www.conventionalcommits.org/)
 
----
 
 ## Contact
 
 * **Maintainer**: Ventexx ([enquiry.kimventex@outlook.com](mailto:enquiry.kimventex@outlook.com))
-
----
+* 
 
 ## License
 
