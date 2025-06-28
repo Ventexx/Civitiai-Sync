@@ -167,7 +167,6 @@ Your contributions are welcome!
 ## Contact
 
 * **Maintainer**: Ventexx ([enquiry.kimventex@outlook.com](mailto:enquiry.kimventex@outlook.com))
-* 
 
 ## License
 
