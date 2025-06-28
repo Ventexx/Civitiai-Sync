@@ -313,7 +313,7 @@ class CivitaiProcessor:
         Download preview images for models that have metadata
         
         Args:
-            file_hash_map: Dictionary mapping file paths to their hashes
+            file_hash_map: Dictionary mapping file paths to their hashes (may be partial)
             
         Returns:
             Number of images successfully downloaded
@@ -322,9 +322,15 @@ class CivitaiProcessor:
         
         downloaded_count = 0
         
+        # Get ALL safetensor files in directory, not just those in file_hash_map
+        all_safetensor_files = self.file_manager.find_safetensor_files()
+        
+        # Get all existing hashes (both computed and from existing JSON files)
+        all_existing_hashes = self.file_manager.get_all_hashes()
+        
         # Find files that have metadata and need images
         files_needing_images = []
-        for file_path in file_hash_map.keys():
+        for file_path in all_safetensor_files:
             json_path = self.file_manager.get_json_path(file_path)
             json_data = self.file_manager.load_existing_json(json_path)
             
@@ -348,8 +354,25 @@ class CivitaiProcessor:
         
         for i, file_path in enumerate(files_needing_images):
             try:
+                # Get hash value - try from file_hash_map first, then from all_existing_hashes
+                hash_value = None
+                if file_path in file_hash_map:
+                    hash_value = file_hash_map[file_path]
+                elif str(file_path) in all_existing_hashes:
+                    hash_value = all_existing_hashes[str(file_path)]
+                else:
+                    # If we still don't have a hash, try to get it from the JSON metadata
+                    json_path = self.file_manager.get_json_path(file_path)
+                    json_data = self.file_manager.load_existing_json(json_path)
+                    if json_data and 'sha256' in json_data:
+                        hash_value = json_data['sha256']
+                
+                if not hash_value:
+                    logger.warning(f"No hash available for {file_path.name}, skipping image download")
+                    progress.update(i + 1)
+                    continue
+                
                 # Get metadata to find image URL
-                hash_value = file_hash_map[file_path]
                 metadata = self.api_client.get_model_by_hash(hash_value)
                 
                 if metadata:
@@ -450,9 +473,19 @@ class CivitaiProcessor:
                 results['stats']['errors'].extend(metadata_stats['errors'])
         
             # Download images if requested
-            if download_images and metadata_file_hashes:
+            if download_images:
                 StatusDisplay.print_info("Downloading preview images...")
-                images_downloaded = self.download_images(metadata_file_hashes)
+                # Combine all available hashes for image downloading
+                all_file_hashes = {}
+                all_file_hashes.update(computed_hashes)
+                
+                # Add existing hashes for files not in computed_hashes
+                for file_path_str, hash_value in existing_hashes.items():
+                    file_path = Path(file_path_str)
+                    if file_path not in all_file_hashes:
+                        all_file_hashes[file_path] = hash_value
+                
+                images_downloaded = self.download_images(all_file_hashes)
                 results['stats']['images_downloaded'] = images_downloaded
         
             # Display final results with enhanced formatting
