@@ -84,7 +84,6 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
     - Do not delete the repository when using editable mode.
 
 ### Uninstall
-
     ```
     pip uninstall civitai-sync
     ```
@@ -115,7 +114,7 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 Sync metadata for all safetensor files in a directory:
 
 ```
-python main.py /path/to/your/models
+civitai-sync /path/to/your/models
 ```
 
 ### With API Key
@@ -123,7 +122,7 @@ python main.py /path/to/your/models
 For better rate limits and access to more features:
 
 ```
-python main.py /path/to/your/models --api-key YOUR_API_KEY
+civitai-sync /path/to/your/models --api-key YOUR_API_KEY
 ```
 
 ### Save API Key
@@ -131,7 +130,7 @@ python main.py /path/to/your/models --api-key YOUR_API_KEY
 Save your API key for future use:
 
 ```
-python main.py --save-api-key YOUR_API_KEY
+civitai-sync --save-api-key YOUR_API_KEY
 ```
 
 ### Download Images
@@ -139,14 +138,15 @@ python main.py --save-api-key YOUR_API_KEY
 Include preview images in the sync:
 
 ```
-python main.py /path/to/your/models --img
+civitai-sync /path/to/your/models --img
 ```
 
 ### Advanced Options
 
 ```
-python main.py /path/to/your/models \
+civitai-sync /path/to/your/models \
   --api-key YOUR_API_KEY \
+  --save-api-key YOUR_API_KEY
   --img \
   --rate-limit 2.0 \
   --refresh-metadata \
@@ -154,7 +154,7 @@ python main.py /path/to/your/models \
   --verbose
 ```
 
-Use `-v` or `--quiet` to toggle logging verbosity.
+Use `--verbose` or `--quiet` to toggle logging verbosity.
 
 ---
 
@@ -162,7 +162,7 @@ Use `-v` or `--quiet` to toggle logging verbosity.
 
 Your contributions are welcome!
 
-[Conventional Commits]: https://www.conventionalcommits.org/
+[Conventional Commits](https://www.conventionalcommits.org/)
 
 ---
 
