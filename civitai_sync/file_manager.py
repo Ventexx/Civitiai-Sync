@@ -7,9 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 class FileManager:
-    """
-    Manages safetensor discovery and basic JSON loading operations.
-    """
+    """Manages safetensor discovery and basic JSON loading operations."""
+    
     def __init__(self, folder_path: str):
         self.folder_path = Path(folder_path)
         if not self.folder_path.exists():
@@ -18,9 +17,7 @@ class FileManager:
             raise ValueError(f"Path is not a directory: {folder_path}")
 
     def find_safetensor_files(self) -> List[Path]:
-        """
-        Recursively find all .safetensors and .safetensor files.
-        """
+        """Recursively find all .safetensors and .safetensor files."""
         patterns = ['**/*.safetensors', '**/*.safetensor']
         files = []
         for pattern in patterns:
@@ -38,9 +35,7 @@ class FileManager:
         return safetensor_path.with_suffix('.preview.png')
 
     def load_existing_json(self, json_path: Path) -> Optional[Dict[Any, Any]]:
-        """
-        Safely load a JSON file if it exists, otherwise return None.
-        """
+        """Load JSON file if it exists."""
         if not json_path.exists():
             return None
         try:
@@ -50,9 +45,7 @@ class FileManager:
             return None
 
     def get_sha256_from_json(self, json_data: Dict[Any, Any]) -> Optional[str]:
-        """
-        Extract a valid SHA256 string from known keys in JSON.
-        """
+        """Extract SHA256 string from known keys in JSON."""
         for key in ('sha256', 'SHA256', 'hash', 'computed_hash'):
             val = json_data.get(key)
             if isinstance(val, str):
@@ -62,12 +55,7 @@ class FileManager:
         return None
 
     def analyze_directory(self) -> Tuple[List[Path], List[Path]]:
-        """
-        Determine which safetensor files need hashing based on existing JSON.
-
-        Returns:
-            (files_needing_hash, files_with_hash)
-        """
+        """Determine which safetensor files need hashing based on existing JSON."""
         safetensors = self.find_safetensor_files()
         need, have = [], []
         for st in safetensors:
@@ -81,9 +69,7 @@ class FileManager:
         return need, have
 
     def get_all_hashes(self) -> Dict[str, str]:
-        """
-        Return a mapping of safetensor paths to their stored SHA256 hashes.
-        """
+        """Return mapping of safetensor paths to their stored SHA256 hashes."""
         hashes: Dict[str, str] = {}
         for st in self.find_safetensor_files():
             data = self.load_existing_json(self.get_json_path(st))
@@ -94,11 +80,7 @@ class FileManager:
         return hashes
 
     def cleanup_orphaned_files(self) -> Dict[str, int]:
-        """
-        Remove JSON and preview files without corresponding safetensor.
-
-        Returns counts of cleaned JSON and preview files.
-        """
+        """Remove JSON and preview files without corresponding safetensor."""
         safetensors = {p.resolve() for p in self.find_safetensor_files()}
         jsons = list(self.folder_path.rglob('*.json'))
         previews = list(self.folder_path.rglob('*.preview.png'))
