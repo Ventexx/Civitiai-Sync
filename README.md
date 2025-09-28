@@ -100,8 +100,6 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 | `--save-api-key` | Save API key to local config |
 | `--img, --images` | Download preview images |
 | `--rate-limit` | Delay between API requests in seconds (default: 1.0) |
-| `--refresh-metadata` | Refresh metadata even if recent |
-| `--max-age` | Max age of metadata in days before refresh (default: 30) |
 | `--verbose, -v` | Enable verbose logging |
 | `--quiet, -q` | Suppress output except errors |
 
@@ -148,8 +146,6 @@ civitai-sync /path/to/your/models \
   --save-api-key YOUR_API_KEY
   --img \
   --rate-limit 2.0 \
-  --refresh-metadata \
-  --max-age 7 \
   --verbose
 ```
 
