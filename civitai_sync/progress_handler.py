@@ -1,24 +1,12 @@
-"""
-Progress bar and visual feedback utilities for Civitai Sync
-"""
-
 import sys
 import time
 from typing import Optional
 
 
 class ProgressBar:
-    """Simple progress bar for terminal output"""
+    """Simple progress bar for terminal output."""
     
     def __init__(self, total: int, description: str = "", width: int = 50):
-        """
-        Initialize progress bar
-        
-        Args:
-            total: Total number of items to process
-            description: Description of current operation
-            width: Width of the progress bar in characters
-        """
         self.total = total
         self.current = 0
         self.description = description
@@ -27,13 +15,7 @@ class ProgressBar:
         self.last_update_time = 0
         
     def update(self, current: Optional[int] = None, description: Optional[str] = None):
-        """
-        Update progress bar
-        
-        Args:
-            current: Current progress (if None, increments by 1)
-            description: New description (if provided)
-        """
+        """Update progress bar."""
         if current is not None:
             self.current = current
         else:
@@ -51,7 +33,7 @@ class ProgressBar:
         self._draw()
     
     def _draw(self):
-        """Draw the progress bar"""
+        """Draw the progress bar."""
         if self.total == 0:
             return
             
@@ -60,7 +42,7 @@ class ProgressBar:
         filled_width = int(self.width * progress)
         
         # Create progress bar with subtle styling
-        filled_char = '━'
+        filled_char = '█'
         empty_char = '─'
         bar = filled_char * filled_width + empty_char * (self.width - filled_width)
         
@@ -80,11 +62,9 @@ class ProgressBar:
         
         # Clear previous lines and write new content       
         if self.current == 1:
-            # First update - just write the line
             sys.stdout.write(line)
         else:
-            # Subsequent updates - clear previous progress line only
-            sys.stdout.write('\033[1A\033[2K') # Go up one line and clear it
+            sys.stdout.write('\033[1A\033[2K')  # Go up one line and clear it
             sys.stdout.write(line)
 
         sys.stdout.flush()
@@ -96,13 +76,13 @@ class ProgressBar:
 
     @staticmethod
     def print_results(stats: dict):
-        """Print processing results in a clean, organized format with icons"""
+        """Print processing results in a clean format."""
         total_time = StatusDisplay.get_elapsed_time()
     
         print(f"\n┌─ Sync completed in {total_time}")
         print(f"│ 📁 Files processed: {stats['total_files']}")
     
-        # Show detailed stats with subtle indentation and appropriate icons
+        # Show detailed stats
         details = []
         if stats.get('hashes_computed', 0) > 0:
             details.append(f"🔢 Hashes computed: {stats['hashes_computed']}")
@@ -117,20 +97,18 @@ class ProgressBar:
             details.append(f"🖼️ Images downloaded: {stats['images_downloaded']}")
     
         if stats.get('not_found', 0) > 0:
-            details.append(f"❓ Not found on Civitai: {stats['not_found']}")
+            details.append(f"❌ Not found on Civitai: {stats['not_found']}")
     
-        # Print details with consistent formatting
         for detail in details:
             print(f"│ {detail}")
     
-        # Handle errors
         if stats.get('errors') and len(stats['errors']) > 0:
-            print(f"│ ❌ Errors encountered: {len(stats['errors'])}")
+            print(f"│ ⚠ Errors encountered: {len(stats['errors'])}")
     
         print("└─")
     
     def _format_time(self, seconds: float) -> str:
-        """Format time in seconds to human readable format"""
+        """Format time in seconds to human readable format."""
         if seconds < 60:
             return f"{seconds:.0f}s"
         elif seconds < 3600:
@@ -141,25 +119,25 @@ class ProgressBar:
             return f"{hours:.0f}h {minutes:.0f}m"
     
     def finish(self, description: Optional[str] = None):
-        """Mark progress as complete"""
+        """Mark progress as complete."""
         if description:
             self.description = description
         self.update(self.total)
 
 
 class StatusDisplay:
-    """Handles status messages and progress display with timing information"""
+    """Handles status messages and progress display with timing information."""
     
     _start_time = None
     
     @classmethod
     def start_timing(cls):
-        """Start the global timing for the entire process"""
+        """Start timing for the entire process."""
         cls._start_time = time.time()
     
     @classmethod
     def get_elapsed_time(cls) -> str:
-        """Get formatted elapsed time since start"""
+        """Get formatted elapsed time since start."""
         if cls._start_time is None:
             return "0s"
         
@@ -175,57 +153,56 @@ class StatusDisplay:
     
     @classmethod
     def _get_timestamp_with_elapsed(cls) -> str:
-        """Get current timestamp with elapsed time in brackets"""
+        """Get current timestamp with elapsed time in brackets."""
         current_time = time.strftime("%H:%M:%S")
         elapsed = cls.get_elapsed_time()
         return f"{current_time} ({elapsed})"
     
     @classmethod
     def _clean_logger_name(cls, name: str) -> str:
-        """Remove civitai_sync prefix from logger names"""
+        """Remove civitai_sync prefix from logger names."""
         if name.startswith('civitai_sync.'):
-            return name[13:]  # Remove 'civitai_sync.' prefix
+            return name[13:]
         return name
     
     @staticmethod
     def print_header(message: str):
-        """Print a header message with subtle styling"""
+        """Print a header message."""
         StatusDisplay.start_timing()
         print(f"\n┌─ {message}")
     
     @staticmethod
     def print_success(message: str):
-        """Print a success message with minimal styling"""
+        """Print a success message."""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
         print(f"{timestamp} ✓ {message}")
     
     @staticmethod
     def print_warning(message: str):
-        """Print a warning message"""
+        """Print a warning message."""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
         print(f"{timestamp} ⚠ {message}")
     
     @staticmethod
     def print_error(message: str):
-        """Print an error message"""
+        """Print an error message."""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
         print(f"{timestamp} ✗ {message}", file=sys.stderr)
     
     @staticmethod
     def print_info(message: str):
-        """Print an info message with clean formatting"""
+        """Print an info message."""
         timestamp = StatusDisplay._get_timestamp_with_elapsed()
         print(f"{timestamp} · {message}")
     
     @staticmethod
     def print_results(stats: dict):
-        """Print processing results in a clean, organized format"""
+        """Print processing results."""
         total_time = StatusDisplay.get_elapsed_time()
         
         print(f"\n┌─ Sync completed in {total_time}")
         print(f"│ Files processed: {stats['total_files']}")
         
-        # Show detailed stats with subtle indentation
         details = []
         if stats.get('hashes_computed', 0) > 0:
             details.append(f"Hashes computed: {stats['hashes_computed']}")
@@ -242,11 +219,9 @@ class StatusDisplay:
         if stats.get('not_found', 0) > 0:
             details.append(f"Not found on Civitai: {stats['not_found']}")
         
-        # Print details with consistent formatting
         for detail in details:
             print(f"│ {detail}")
         
-        # Handle errors
         if stats.get('errors') and len(stats['errors']) > 0:
             print(f"│ Errors encountered: {len(stats['errors'])}")
         
@@ -254,7 +229,7 @@ class StatusDisplay:
     
     @staticmethod
     def setup_logging_formatter():
-        """Setup custom logging formatter for cleaner display"""
+        """Setup custom logging formatter for cleaner display."""
         import logging
         
         class CustomFormatter(logging.Formatter):
