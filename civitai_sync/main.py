@@ -68,19 +68,6 @@ def main():
         help='Delay between API requests in seconds (default: 1.0)'
     )
     
-    parser.add_argument(
-        '--refresh-metadata',
-        action='store_true',
-        help='Refresh metadata even if it exists and is recent'
-    )
-    
-    parser.add_argument(
-        '--max-age',
-        type=int,
-        default=30,
-        help='Maximum age of metadata in days before refresh (default: 30)'
-    )
-    
     # Logging options
     parser.add_argument(
         '--verbose', '-v',
@@ -139,8 +126,6 @@ def main():
             folder_path=str(folder_path),
             api_key=api_key,
             rate_limit_delay=args.rate_limit,
-            refresh_metadata=args.refresh_metadata,
-            max_metadata_age_days=args.max_age
         )
         
         # Process directory

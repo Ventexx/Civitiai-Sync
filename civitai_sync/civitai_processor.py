@@ -5,7 +5,7 @@ Enhanced processor for handling Civitai API integration with local safetensor fi
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import OrderedDict
 import json
 
@@ -21,8 +21,7 @@ class CivitaiProcessor:
     """Enhanced processor for Civitai integration"""
     
     def __init__(self, folder_path: str, api_key: Optional[str] = None, 
-                 rate_limit_delay: float = 1.0, refresh_metadata: bool = False,
-                 max_metadata_age_days: int = 30):
+                 rate_limit_delay: float = 1.0):
         """
         Initialize CivitaiProcessor
         
@@ -30,14 +29,10 @@ class CivitaiProcessor:
             folder_path: Path to folder containing safetensor files
             api_key: Optional Civitai API key
             rate_limit_delay: Delay between API requests in seconds
-            refresh_metadata: Force refresh of all metadata
-            max_metadata_age_days: Maximum age of metadata before refresh
         """
         self.file_manager = FileManager(folder_path)
         self.api_client = CivitaiAPIClient(api_key, rate_limit_delay)
         self.folder_path = Path(folder_path)
-        self.refresh_metadata = refresh_metadata
-        self.max_metadata_age_days = max_metadata_age_days
     
     def validate_safetensor_files(self, files: List[Path]) -> List[Path]:
         """
@@ -102,59 +97,23 @@ class CivitaiProcessor:
         progress.finish("Hash computation completed")
         return computed_hashes
     
-    def is_metadata_stale(self, json_data: Dict[Any, Any]) -> bool:
+    def _has_complete_metadata(self, json_data: Dict[Any, Any]) -> bool:
         """
-        Check if metadata is stale and needs refreshing
+        Check if JSON contains complete metadata
         
         Args:
             json_data: Existing JSON data
             
         Returns:
-            True if metadata should be refreshed
+            True if metadata is complete
         """
-        if self.refresh_metadata:
-            return True
+        # Check for civitai_not_found flag
+        if json_data.get('civitai_not_found'):
+            return True  # This is complete (negative result)
         
         # Check if we have the required metadata fields
         required_fields = ['model', 'modelId', 'modelVersionId']
-        if not all(field in json_data for field in required_fields):
-            return True
-        
-        # Check last update timestamp
-        if 'last_updated' in json_data:
-            try:
-                last_updated = datetime.fromisoformat(json_data['last_updated'])
-                max_age = timedelta(days=self.max_metadata_age_days)
-                return datetime.now() - last_updated > max_age
-            except (ValueError, TypeError):
-                return True
-        
-        return True  # No timestamp, consider stale
-    
-    def analyze_metadata_freshness(self) -> tuple[List[Path], List[Path]]:
-        """
-        Analyze which files need metadata refresh
-        
-        Returns:
-            Tuple of (files_needing_metadata, files_with_fresh_metadata)
-        """
-        safetensor_files = self.file_manager.find_safetensor_files()
-        files_needing_metadata = []
-        files_with_fresh_metadata = []
-        
-        for safetensor_file in safetensor_files:
-            json_path = self.file_manager.get_json_path(safetensor_file)
-            existing_json = self.file_manager.load_existing_json(json_path)
-            
-            if not existing_json or self.is_metadata_stale(existing_json):
-                files_needing_metadata.append(safetensor_file)
-            else:
-                files_with_fresh_metadata.append(safetensor_file)
-        
-        logger.info(f"Metadata analysis: {len(files_needing_metadata)} need refresh, "
-                   f"{len(files_with_fresh_metadata)} are fresh")
-        
-        return files_needing_metadata, files_with_fresh_metadata
+        return all(field in json_data for field in required_fields)
     
     def fetch_and_save_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[str, Any]:
         """
@@ -340,8 +299,8 @@ class CivitaiProcessor:
                 
             preview_path = file_path.with_suffix('.preview.png')
             
-            # Skip if image already exists and we're not forcing refresh
-            if preview_path.exists() and not self.refresh_metadata:
+            # Skip if image already exists
+            if preview_path.exists():
                 continue
                 
             files_needing_images.append(file_path)
@@ -390,12 +349,10 @@ class CivitaiProcessor:
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
 
-    # Add this method to the CivitaiProcessor class to replace the current process_directory results display
-
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """
         Process entire directory: compute hashes, fetch metadata, save results
-    
+
         Args:
             download_images: Whether to download preview images
         
@@ -403,13 +360,10 @@ class CivitaiProcessor:
             Dictionary containing processing results and statistics
         """        
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")
-    
+
         # Analyze directory for hash computation
         files_needing_hash, files_with_existing_hash = self.file_manager.analyze_directory()
-    
-        # Analyze metadata freshness
-        files_needing_metadata, files_with_fresh_metadata = self.analyze_metadata_freshness()
-    
+
         if not files_needing_hash and not files_with_existing_hash:
             StatusDisplay.print_warning("No safetensor files found in directory!")
             return {
@@ -417,15 +371,26 @@ class CivitaiProcessor:
                 'error': 'No safetensor files found',
                 'stats': {'total_files': 0}
             }
-    
+
+        # Get all safetensor files that need processing
+        all_safetensor_files = self.file_manager.find_safetensor_files()
+        files_needing_metadata = []
+        
+        for safetensor_file in all_safetensor_files:
+            json_path = self.file_manager.get_json_path(safetensor_file)
+            existing_json = self.file_manager.load_existing_json(json_path)
+            
+            # Process if no JSON exists or if it doesn't have required metadata
+            if not existing_json or not self._has_complete_metadata(existing_json):
+                files_needing_metadata.append(safetensor_file)
+
         results = {
             'success': True,
             'stats': {
-                'total_files': len(files_needing_hash) + len(files_with_existing_hash),
+                'total_files': len(all_safetensor_files),
                 'files_needing_hash': len(files_needing_hash),
-            'files_with_existing_hash': len(files_with_existing_hash),
+                'files_with_existing_hash': len(files_with_existing_hash),
                 'files_needing_metadata': len(files_needing_metadata),
-                'files_with_fresh_metadata': len(files_with_fresh_metadata),
                 'hashes_computed': 0,
                 'metadata_fetched': 0,
                 'files_saved': 0,
@@ -434,12 +399,12 @@ class CivitaiProcessor:
                 'errors': []
             }
         }
-    
+
         try:
             # Show initial analysis
             StatusDisplay.print_info(f"Found {results['stats']['total_files']} safetensor files")
             if files_needing_metadata:
-                StatusDisplay.print_info(f"{len(files_needing_metadata)} files need metadata update")
+                StatusDisplay.print_info(f"{len(files_needing_metadata)} files need metadata")
             
             # Compute missing hashes
             computed_hashes = {}
@@ -497,17 +462,16 @@ class CivitaiProcessor:
             results['success'] = False
             results['error'] = str(e)
             results['stats']['errors'].append(str(e))
-    
+
         finally:
             # Clean up API client
             self.api_client.close()
-    
+
         return results
 
 
 def process_civitai_directory(folder_path: str, api_key: Optional[str] = None, 
-                             rate_limit_delay: float = 1.0, refresh_metadata: bool = False,
-                             max_metadata_age_days: int = 30, download_images: bool = False) -> Dict[str, Any]:
+                             rate_limit_delay: float = 1.0, download_images: bool = False) -> Dict[str, Any]:
     """
     Convenience function to process a directory with Civitai integration
     
@@ -515,15 +479,10 @@ def process_civitai_directory(folder_path: str, api_key: Optional[str] = None,
         folder_path: Path to folder containing safetensor files
         api_key: Optional Civitai API key
         rate_limit_delay: Delay between API requests in seconds
-        refresh_metadata: Force refresh of all metadata
-        max_metadata_age_days: Maximum age of metadata before refresh
         download_images: Whether to download preview images
         
     Returns:
         Dictionary containing processing results
     """
-    processor = CivitaiProcessor(
-        folder_path, api_key, rate_limit_delay, 
-        refresh_metadata, max_metadata_age_days
-    )
+    processor = CivitaiProcessor(folder_path, api_key, rate_limit_delay)
     return processor.process_directory(download_images)
