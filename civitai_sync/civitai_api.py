@@ -16,19 +16,12 @@ class CivitaiAPIClient:
     """Enhanced client for interacting with Civitai API"""
     
     def __init__(self, api_key: Optional[str] = None, rate_limit_delay: float = 1.0):
-        """
-        Initialize Civitai API client
-        
-        Args:
-            api_key: Optional API key for authenticated requests
-            rate_limit_delay: Base delay between requests in seconds
-        """
+        """Initialize Civitai API client"""
         self.api_key = api_key
         self.base_url = "https://civitai.com/api/v1"
         self.rate_limit_delay = rate_limit_delay
         self.last_request_time = 0
         
-        # Session for connection reuse
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'civitai-sync/1.0'
@@ -52,33 +45,13 @@ class CivitaiAPIClient:
         self.last_request_time = time.time()
     
     def _exponential_backoff(self, attempt: int, base_delay: float = 1.0, max_delay: float = 60.0) -> float:
-        """
-        Calculate exponential backoff delay
-        
-        Args:
-            attempt: Attempt number (0-based)
-            base_delay: Base delay in seconds
-            max_delay: Maximum delay in seconds
-            
-        Returns:
-            Delay in seconds
-        """
+        """Calculate exponential backoff delay with jitter"""
         delay = min(base_delay * (2 ** attempt), max_delay)
-        # Add jitter to avoid thundering herd
         jitter = delay * 0.1 * random.random()
         return delay + jitter
     
     def _make_request_with_retry(self, url: str, max_retries: int = 3) -> Optional[requests.Response]:
-        """
-        Make HTTP request with retry logic
-        
-        Args:
-            url: URL to request
-            max_retries: Maximum number of retries
-            
-        Returns:
-            Response object or None if all retries failed
-        """
+        """Make HTTP request with retry logic and exponential backoff"""
         for attempt in range(max_retries + 1):
             self._wait_for_rate_limit()
             
@@ -125,15 +98,7 @@ class CivitaiAPIClient:
         return None
     
     def get_model_by_hash(self, sha256_hash: str) -> Optional[Dict[Any, Any]]:
-        """
-        Fetch model metadata from Civitai by SHA256 hash
-        
-        Args:
-            sha256_hash: SHA256 hash of the model file
-            
-        Returns:
-            Dictionary containing model metadata, or None if not found
-        """
+        """Fetch model metadata from Civitai by SHA256 hash"""
         url = f"{self.base_url}/model-versions/by-hash/{sha256_hash}"
         
         logger.info(f"Fetching metadata for hash: {sha256_hash[:8]}...")
@@ -148,7 +113,6 @@ class CivitaiAPIClient:
         
         try:
             data = response.json()
-            # Add the hash to the returned data for reference
             data['computed_hash'] = sha256_hash
             logger.info(f"Successfully fetched metadata for hash: {sha256_hash[:8]}...")
             return data
@@ -157,16 +121,7 @@ class CivitaiAPIClient:
             return None
     
     def download_image(self, image_url: str, output_path: Path) -> bool:
-        """
-        Download an image from URL to local file
-        
-        Args:
-            image_url: URL of the image to download
-            output_path: Local path to save the image
-            
-        Returns:
-            True if successful, False otherwise
-        """
+        """Download an image from URL to local file"""
         logger.info(f"Downloading image: {output_path.name}")
         
         response = self._make_request_with_retry(image_url)
@@ -175,7 +130,6 @@ class CivitaiAPIClient:
             return False
         
         try:
-            # Ensure parent directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
             with output_path.open('wb') as f:
@@ -190,25 +144,14 @@ class CivitaiAPIClient:
             return False
     
     def get_image_urls_from_metadata(self, metadata: Dict[Any, Any]) -> list[str]:
-        """
-        Extract image URLs from model metadata
-        
-        Args:
-            metadata: Model metadata from Civitai API
-            
-        Returns:
-            List of image URLs
-        """
+        """Extract all image URLs from model metadata"""
         image_urls = []
         
-        # Look for images in the metadata structure
-        # Civitai API structure: model version has images array
         if 'images' in metadata and isinstance(metadata['images'], list):
             for image_data in metadata['images']:
                 if isinstance(image_data, dict) and 'url' in image_data:
                     image_urls.append(image_data['url'])
         
-        # Also check for model-level images if available
         if 'model' in metadata and isinstance(metadata['model'], dict):
             model_data = metadata['model']
             if 'images' in model_data and isinstance(model_data['images'], list):
@@ -219,15 +162,7 @@ class CivitaiAPIClient:
         return image_urls
     
     def get_primary_image_url(self, metadata: Dict[Any, Any]) -> Optional[str]:
-        """
-        Get the primary/first image URL from metadata
-        
-        Args:
-            metadata: Model metadata from Civitai API
-            
-        Returns:
-            Primary image URL or None if not found
-        """
+        """Get the first/primary image URL from metadata"""
         image_urls = self.get_image_urls_from_metadata(metadata)
         return image_urls[0] if image_urls else None
     
