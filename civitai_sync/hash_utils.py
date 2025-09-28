@@ -1,7 +1,3 @@
-"""
-Enhanced utilities for computing SHA256 hashes of safetensor files
-"""
-
 import hashlib
 import logging
 from pathlib import Path
@@ -12,21 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192, quiet: bool = False) -> str:
-    """
-    Compute SHA256 hash of a file with progress logging for large files
-    
-    Args:
-        file_path: Path to the file
-        chunk_size: Size of chunks to read at a time (default 8KB)
-        quiet: If True, suppress progress logging
-        
-    Returns:
-        SHA256 hash as lowercase hexadecimal string
-        
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        IOError: If file cannot be read
-    """
+    """Compute SHA256 hash with progress logging for large files."""
     file_path = Path(file_path)
     
     if not file_path.exists():
@@ -44,12 +26,11 @@ def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192, quiet: b
     
     try:
         with file_path.open('rb') as f:
-            # Read file in chunks to handle large files efficiently
             while chunk := f.read(chunk_size):
                 sha256_hash.update(chunk)
                 bytes_processed += len(chunk)
                 
-                # Log progress for large files (>100MB) only if not quiet
+                # Log progress for large files (>100MB)
                 if not quiet and file_size > 100 * 1024 * 1024:
                     progress = (bytes_processed / file_size) * 100
                     if bytes_processed % (10 * 1024 * 1024) == 0:  # Every 10MB
@@ -66,15 +47,7 @@ def compute_sha256(file_path: Union[str, Path], chunk_size: int = 8192, quiet: b
 
 
 def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
-    """
-    Verify that a file is a valid safetensor file with enhanced checks
-    
-    Args:
-        file_path: Path to the file
-        
-    Returns:
-        True if file appears to be a valid safetensor file
-    """
+    """Verify that a file is a valid safetensor file."""
     file_path = Path(file_path)
     
     # Check file extension
@@ -92,7 +65,7 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
         logger.debug(f"File is empty: {file_path.name}")
         return False
     
-    # Minimum reasonable size for a safetensor file (header + some data)
+    # Minimum reasonable size for a safetensor file
     if file_size < 100:
         logger.debug(f"File too small to be valid safetensor: {file_path.name}")
         return False
@@ -107,7 +80,6 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
                 return False
             
             # Safetensor files start with an 8-byte little-endian integer
-            # indicating the JSON header length
             header_length = int.from_bytes(header_length_bytes, byteorder='little')
             
             # Reasonable bounds check for header length
@@ -126,7 +98,7 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
                 logger.debug(f"Could not read full header: {file_path.name}")
                 return False
             
-            # Try to decode as JSON (basic validation)
+            # Try to decode as JSON
             try:
                 header_json = json.loads(header_data.decode('utf-8'))
                 
@@ -134,11 +106,6 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
                 if not isinstance(header_json, dict):
                     logger.debug(f"Header is not a JSON object: {file_path.name}")
                     return False
-                
-                # Check for expected keys in safetensor header
-                if '__metadata__' not in header_json:
-                    logger.debug(f"Missing __metadata__ in header: {file_path.name}")
-                    # This is not strictly required, so we'll allow it
                 
                 logger.debug(f"Valid safetensor file: {file_path.name}")
                 return True
@@ -156,15 +123,7 @@ def verify_safetensor_file(file_path: Union[str, Path]) -> bool:
 
 
 def get_safetensor_metadata(file_path: Union[str, Path]) -> dict:
-    """
-    Extract metadata from a safetensor file header
-    
-    Args:
-        file_path: Path to the safetensor file
-        
-    Returns:
-        Dictionary containing metadata, empty dict if none found
-    """
+    """Extract metadata from a safetensor file header."""
     file_path = Path(file_path)
     
     if not verify_safetensor_file(file_path):
@@ -183,7 +142,7 @@ def get_safetensor_metadata(file_path: Union[str, Path]) -> dict:
             # Extract metadata
             metadata = header_json.get('__metadata__', {})
             
-            # Add some computed info
+            # Add computed info
             metadata['_file_size'] = file_path.stat().st_size
             metadata['_header_size'] = header_length
             metadata['_tensor_count'] = len([k for k in header_json.keys() if k != '__metadata__'])
@@ -196,24 +155,14 @@ def get_safetensor_metadata(file_path: Union[str, Path]) -> dict:
 
 
 def validate_sha256_hash(hash_string: str) -> bool:
-    """
-    Validate that a string is a valid SHA256 hash
-    
-    Args:
-        hash_string: String to validate
-        
-    Returns:
-        True if valid SHA256 hash format
-    """
+    """Validate that a string is a valid SHA256 hash."""
     if not isinstance(hash_string, str):
         return False
     
-    # Remove any whitespace
     hash_string = hash_string.strip().lower()
     
     # SHA256 should be exactly 64 hex characters
     if len(hash_string) != 64:
         return False
     
-    # Check if all characters are valid hex
     return all(c in '0123456789abcdef' for c in hash_string)
