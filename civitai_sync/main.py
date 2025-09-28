@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""
-Civitai Sync - CLI tool for syncing safetensor model metadata and images from Civitai
-"""
 
 import sys
 from pathlib import Path
@@ -14,7 +11,7 @@ from civitai_sync.progress_handler import StatusDisplay
 
 
 def setup_logging(verbose: bool = False):
-    """Setup logging configuration"""
+    """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -24,7 +21,7 @@ def setup_logging(verbose: bool = False):
 
 
 def save_api_key(api_key: str) -> bool:
-    """Save API key to config"""
+    """Save API key to config."""
     config_manager = ConfigManager()
     return config_manager.save_api_key(api_key)
 
@@ -35,14 +32,12 @@ def main():
         prog='civitai-sync'
     )
     
-    # Main command - folder path
     parser.add_argument(
         'folder_path',
         nargs='?',
         help='Path to folder containing safetensor files'
     )
     
-    # API key options
     parser.add_argument(
         '--api-key',
         help='Civitai API key for this session'
@@ -54,7 +49,6 @@ def main():
         help='Save API key to local config for future use'
     )
     
-    # Processing options
     parser.add_argument(
         '--img', '--images',
         action='store_true',
@@ -68,7 +62,6 @@ def main():
         help='Delay between API requests in seconds (default: 1.0)'
     )
     
-    # Logging options
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
@@ -131,7 +124,6 @@ def main():
         # Process directory
         results = processor.process_directory(download_images=args.img)
         
-        # Handle results (success/error messages are now handled in processor)
         if not results['success']:
             StatusDisplay.print_error(f"Sync failed: {results.get('error', 'Unknown error')}")
             return 1
