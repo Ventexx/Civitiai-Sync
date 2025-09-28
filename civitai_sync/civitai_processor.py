@@ -199,10 +199,12 @@ class CivitaiProcessor:
             
             if not json_data or json_data.get('civitai_not_found'):
                 continue
-                
-            preview_path = file_path.with_suffix('.preview.png')
             
-            if preview_path.exists():
+            # Check for any preview image with common extensions
+            preview_extensions = ['.preview.png', '.preview.jpg', '.preview.jpeg', '.preview.webp', '.preview.gif']
+            has_preview = any((file_path.parent / (file_path.stem + ext)).exists() for ext in preview_extensions)
+            
+            if has_preview:
                 continue
                 
             files_needing_images.append(file_path)
@@ -235,9 +237,12 @@ class CivitaiProcessor:
                 if metadata:
                     image_url = self.api_client.get_primary_image_url(metadata)
                     if image_url:
+                        # Start with .png, but download_image will adjust extension based on actual content
                         preview_path = file_path.with_suffix('.preview.png')
                         if self.api_client.download_image(image_url, preview_path):
                             downloaded_count += 1
+                    else:
+                        logger.info(f"No valid images available for {file_path.name}")
                 
                 progress.update(i + 1)
             except Exception as e:
@@ -246,7 +251,7 @@ class CivitaiProcessor:
         
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
-
+        
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """Process entire directory: compute hashes, fetch metadata, save results"""      
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")

@@ -123,6 +123,10 @@ class CivitaiAPIClient:
     def download_image(self, image_url: str, output_path: Path) -> bool:
         """Download an image from URL to local file"""
         logger.info(f"Downloading image: {output_path.name}")
+
+        if not self._is_valid_image_url(image_url):
+            logger.warning(f"URL does not point to a valid image: {image_url}")
+            return False
         
         response = self._make_request_with_retry(image_url)
         if not response:
@@ -130,6 +134,22 @@ class CivitaiAPIClient:
             return False
         
         try:
+            content_type = response.headers.get('content-type', '').lower()
+            extension_map = {
+                'image/jpeg': '.jpg',
+                'image/jpg': '.jpg',
+                'image/png': '.png',
+                'image/webp': '.webp',
+                'image/gif': '.gif',
+                'image/bmp': '.bmp',
+                'image/tiff': '.tiff'
+            }
+            proper_extension = extension_map.get(content_type, '.png')
+        
+            if not output_path.name.endswith(proper_extension):
+                base_name = output_path.name.replace('.preview.png', '')
+                output_path = output_path.parent / f"{base_name}.preview{proper_extension}"
+        
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
             with output_path.open('wb') as f:
@@ -162,9 +182,48 @@ class CivitaiAPIClient:
         return image_urls
     
     def get_primary_image_url(self, metadata: Dict[Any, Any]) -> Optional[str]:
-        """Get the first/primary image URL from metadata"""
+        """Get the first valid image URL from metadata, skipping videos"""
         image_urls = self.get_image_urls_from_metadata(metadata)
-        return image_urls[0] if image_urls else None
+    
+        if not image_urls:
+            return None
+    
+        for url in image_urls:
+            if self._is_valid_image_url(url):
+                logger.debug(f"Found valid image URL: {url}")
+                return url
+            else:
+                logger.debug(f"Skipping non-image URL: {url}")
+    
+        logger.warning("No valid image URLs found in metadata")
+        return None
+
+    def _is_valid_image_url(self, url: str) -> bool:
+        """Check if URL points to a valid image by examining the response"""
+        try:
+            # First check the URL extension
+            url_lower = url.lower()
+            video_extensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.gif']
+            if any(url_lower.endswith(ext) for ext in video_extensions):
+                return False
+            
+            # Make a HEAD request to check content type
+            response = self.session.head(url, timeout=10)
+            if response.status_code == 200:
+                content_type = response.headers.get('content-type', '').lower()
+                return content_type.startswith('image/')
+            
+            # If HEAD fails, try a small GET request
+            response = self.session.get(url, timeout=10, stream=True)
+            if response.status_code == 200:
+                content_type = response.headers.get('content-type', '').lower()
+                return content_type.startswith('image/')
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Error validating image URL {url}: {e}")
+            return False
     
     def close(self):
         """Close the session"""
