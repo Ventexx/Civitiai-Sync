@@ -6,13 +6,15 @@ from typing import Optional
 class ProgressBar:
     """Simple progress bar for terminal output."""
     
-    def __init__(self, total: int, description: str = "", width: int = 50):
+    def __init__(self, total: int, description: str = "", width: int = 50, single_line: bool = False):
         self.total = total
         self.current = 0
         self.description = description
         self.width = width
         self.start_time = time.time()
         self.last_update_time = 0
+        self.single_line = single_line
+        self.description_printed = False
         
     def update(self, current: Optional[int] = None, description: Optional[str] = None):
         """Update progress bar."""
@@ -24,9 +26,9 @@ class ProgressBar:
         if description is not None:
             self.description = description
             
-        # Throttle updates to avoid too frequent refreshes
+        # Throttle updates to avoid too frequent refreshes (except for single_line mode)
         current_time = time.time()
-        if current_time - self.last_update_time < 0.1 and self.current < self.total:
+        if not self.single_line and current_time - self.last_update_time < 0.1 and self.current < self.total:
             return
         self.last_update_time = current_time
             
@@ -41,7 +43,7 @@ class ProgressBar:
         progress = min(self.current / self.total, 1.0)
         filled_width = int(self.width * progress)
         
-        # Create progress bar with subtle styling
+        # Create progress bar
         filled_char = '█'
         empty_char = '─'
         bar = filled_char * filled_width + empty_char * (self.width - filled_width)
@@ -57,13 +59,25 @@ class ProgressBar:
         else:
             eta_str = ""
         
-        # For mixed output scenarios, just print each update on a new line
-        line = f"{self.description}\n({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
-    
-        # Only print when we have meaningful updates or when complete
-        if self.current == 1 or self.current == self.total or self.current % max(1, self.total // 20) == 0:
-            print(line, flush=True)
-        elif self.current == self.total:
+        if self.single_line:
+            # Single-line mode for hashing
+            if not self.description_printed:
+                print(f"{self.description}")
+                self.description_printed = True
+            
+            # Build the progress line
+            line = f"({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
+            
+            # Clear the line by padding with spaces, then use carriage return
+            terminal_width = 120
+            line_padded = line.ljust(terminal_width)
+            print(f"\r{line_padded}", end='', flush=True)
+            
+            if self.current == self.total:
+                print()
+        else:
+            # Multi-line mode for metadata fetching
+            line = f"{self.description}\n({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
             print(line, flush=True)
 
     @staticmethod
@@ -112,10 +126,15 @@ class ProgressBar:
     
     def finish(self, description: Optional[str] = None):
         """Mark progress as complete."""
-        if description:
-            self.description = description
-        self.update(self.total)
-
+        if self.single_line:
+            # For single-line mode, just print completion message on new line
+            if description:
+                print(description)
+        else:
+            # For multi-line mode, update to 100%
+            if description:
+                self.description = description
+            self.update(self.total)
 
 class StatusDisplay:
     """Handles status messages and progress display with timing information."""

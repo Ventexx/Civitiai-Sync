@@ -56,7 +56,7 @@ class CivitaiProcessor:
         if not valid_files:
             return computed_hashes
         
-        progress = ProgressBar(len(valid_files), "Computing SHA256 hashes...")
+        progress = ProgressBar(len(valid_files), "Computing SHA256 hashes...", single_line=True)
         
         for i, file_path in enumerate(valid_files):
             try:
@@ -123,13 +123,13 @@ class CivitaiProcessor:
                     
                     if self.save_metadata_file(file_path, hash_value, metadata):
                         stats['files_saved'] += 1
+                        progress.update(i)
                     else:
                         stats['errors'].append(f"Failed to save metadata for {file_path.name}")
                 else:
                     stats['not_found'] += 1
                     self.save_minimal_metadata(file_path, hash_value)
-                
-                progress.update(i)
+                    progress.update(i)
                     
             except Exception as e:
                 error_msg = f"Error processing {file_path.name}: {e}"
