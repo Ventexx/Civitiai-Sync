@@ -54,6 +54,12 @@ def main():
         action='store_true',
         help='Download preview images for models'
     )
+
+    parser.add_argument(
+        '--list-not-found', '-l',
+        action='store_true',
+        help='List all files that could not be found on Civitai'
+    )
     
     parser.add_argument(
         '--rate-limit',
@@ -75,6 +81,19 @@ def main():
     )
     
     args = parser.parse_args()
+
+    # Validate argument combinations
+    if args.list_not_found:
+        invalid_args = []
+        if args.api_key:
+            invalid_args.append('--api-key')
+        if args.img:
+            invalid_args.append('--img/--images')
+        if args.rate_limit != 1.0:  # Only if changed from default
+            invalid_args.append('--rate-limit')
+        
+        if invalid_args:
+            parser.error(f"--list-not-found cannot be combined with: {', '.join(invalid_args)}")
     
     # Handle API key saving
     if args.save_api_key:
@@ -87,8 +106,43 @@ def main():
         # If only saving API key, exit here
         if not args.folder_path:
             return 0
-    
-    # Validate folder path
+
+    # Handle list-not-found command
+    if args.list_not_found:
+        if not args.folder_path:
+            parser.error("folder_path is required for --list-not-found")
+        
+        folder_path = Path(args.folder_path)
+        if not folder_path.exists():
+            StatusDisplay.print_error(f"Folder not found: {folder_path}")
+            return 1
+        
+        if not folder_path.is_dir():
+            StatusDisplay.print_error(f"Path is not a directory: {folder_path}")
+            return 1
+        
+        # Setup logging for list command
+        if not args.quiet:
+            setup_logging(args.verbose)
+        
+        try:
+            processor = CivitaiProcessor(
+                folder_path=str(folder_path),
+                api_key=None,  # Not needed for listing
+                rate_limit_delay=1.0,
+            )
+            
+            processor.list_not_found_files(quiet=args.quiet, verbose=args.verbose)
+            return 0
+            
+        except Exception as e:
+            StatusDisplay.print_error(f"Error listing files: {e}")
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
+
+    # Validate folder path for normal processing
     if not args.folder_path:
         parser.error("folder_path is required unless using --save-api-key only")
     

@@ -279,6 +279,71 @@ class CivitaiProcessor:
         
         progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
         return downloaded_count
+
+    def list_not_found_files(self, quiet: bool = False, verbose: bool = False):
+        """List all files that have civitai_not_found flag set to True"""
+        
+        all_safetensor_files = self.file_manager.find_safetensor_files()
+        not_found_files = []
+        
+        for safetensor_file in all_safetensor_files:
+            json_path = self.file_manager.get_json_path(safetensor_file)
+            json_data = self.file_manager.load_existing_json(json_path)
+            
+            if json_data and json_data.get('civitai_not_found') is True:
+                not_found_files.append(safetensor_file)
+        
+        if quiet:
+            # Minimal output - just file paths
+            for file_path in not_found_files:
+                print(file_path)
+        elif verbose:
+            # Detailed file tree output
+            if not not_found_files:
+                StatusDisplay.print_info("No files found with 'civitai_not_found' flag")
+                return
+            
+            StatusDisplay.print_header("Files that couldn't be found on Civitai and have no proper metadata")
+            
+            # Group files by directory for tree display
+            from collections import defaultdict
+            files_by_dir = defaultdict(list)
+            
+            for file_path in not_found_files:
+                relative_path = file_path.relative_to(self.folder_path)
+                parent_dir = relative_path.parent
+                files_by_dir[parent_dir].append(relative_path.name)
+            
+            # Sort directories and files
+            sorted_dirs = sorted(files_by_dir.keys(), key=str)
+            
+            for dir_path in sorted_dirs:
+                if str(dir_path) == '.':
+                    print(f"│ {self.folder_path.name}/")
+                else:
+                    print(f"│ {self.folder_path.name}/{dir_path}/")
+                
+                sorted_files = sorted(files_by_dir[dir_path])
+                for i, filename in enumerate(sorted_files):
+                    is_last = i == len(sorted_files) - 1
+                    connector = "└─" if is_last else "├─"
+                    print(f"│   {connector} {filename}")
+            
+            print(f"└─ Total: {len(not_found_files)} file(s) not found on Civitai")
+        
+        else:
+            # Standard output
+            if not not_found_files:
+                StatusDisplay.print_info("No files found with 'civitai_not_found' flag")
+                return
+            
+            StatusDisplay.print_header("Files that couldn't be found on Civitai and have no proper metadata")
+            
+            for file_path in not_found_files:
+                relative_path = file_path.relative_to(self.folder_path)
+                StatusDisplay.print_info(f"{relative_path}")
+            
+            print(f"\nTotal: {len(not_found_files)} file(s) not found on Civitai")
         
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """Process entire directory: compute hashes, fetch metadata, save results"""      
