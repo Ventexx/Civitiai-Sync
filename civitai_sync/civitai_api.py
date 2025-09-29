@@ -8,6 +8,8 @@ import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
 import random
+from PIL import Image
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -134,27 +136,16 @@ class CivitaiAPIClient:
             return False
         
         try:
-            content_type = response.headers.get('content-type', '').lower()
-            extension_map = {
-                'image/jpeg': '.jpg',
-                'image/jpg': '.jpg',
-                'image/png': '.png',
-                'image/webp': '.webp',
-                'image/gif': '.gif',
-                'image/bmp': '.bmp',
-                'image/tiff': '.tiff'
-            }
-            proper_extension = extension_map.get(content_type, '.png')
-        
-            if not output_path.name.endswith(proper_extension):
-                base_name = output_path.name.replace('.preview.png', '')
-                output_path = output_path.parent / f"{base_name}.preview{proper_extension}"
-        
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            with output_path.open('wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+            image = Image.open(io.BytesIO(response.content))
+            if image.mode in ('RGBA', 'LA', 'P'):
+                image = image.convert('RGBA')
+            else:
+                image = image.convert('RGB')
+
+            png_output_path = output_path.with_suffix('.preview.png')
+            image.save(png_output_path, 'PNG', optimize=True)
             
             logger.info(f"✓ Downloaded image: {output_path.name}")
             return True
