@@ -99,6 +99,7 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 | `--api-key` | Civitai API key for this session |
 | `--save-api-key` | Save API key to local config |
 | `--img, --images` | Download preview images |
+| `--list-not-found, -l` | List all files that could not be found on Civitai |
 | `--rate-limit` | Delay between API requests in seconds (default: 1.0) |
 | `--verbose, -v` | Enable verbose logging |
 | `--quiet, -q` | Suppress output except errors |
@@ -135,21 +136,35 @@ civitai-sync --save-api-key YOUR_API_KEY
 Include preview images in the sync:
 
 ```
-civitai-sync /path/to/your/models --img
+civitai-sync /path/to/your/models --images
 ```
+
+### List Not Found Files
+
+Display all files that couldn't be found on Civitai and have no proper metadata:
+
+```
+civitai-sync /path/to/your/models --list-not-found
+```
+
+This command works independently and cannot be combined with other processing options. It supports different output modes:
+
+- **Standard output**: Clean list with relative paths and totals
+- **Quiet mode** (`-q`): Only essential file paths for scripting
+- **Verbose mode** (`-v`): File tree structure showing directory hierarchy
 
 ### Advanced Options
 
 ```
-civitai-sync /path/to/your/models \
-  --api-key YOUR_API_KEY \
+civitai-sync /path/to/your/models
+  --api-key YOUR_API_KEY
   --save-api-key YOUR_API_KEY
-  --img \
-  --rate-limit 2.0 \
-  --verbose
+  --img
+  -l
+  --rate-limit 2.0
 ```
 
-Use `--verbose` or `--quiet` to toggle logging verbosity.
+Use `--verbose`/`-v` or `--quiet`/`-q` to toggle logging verbosity.
 
 ---
 
