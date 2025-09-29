@@ -57,22 +57,14 @@ class ProgressBar:
         else:
             eta_str = ""
         
-        # Format the line with minimal but clear styling
-        line = f"\r{self.description}\n({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
-        
-        # Clear previous lines and write new content       
-        if self.current == 1:
-            sys.stdout.write(line)
-        else:
-            sys.stdout.write('\033[1A\033[2K')  # Go up one line and clear it
-            sys.stdout.write(line)
-
-        sys.stdout.flush()
-        
-        # Add newline when complete
-        if self.current >= self.total:
-            sys.stdout.write('\n')
-            sys.stdout.flush()
+        # For mixed output scenarios, just print each update on a new line
+        line = f"{self.description}\n({self.current}/{self.total}) [{bar}] {percentage:.1f}%{eta_str}"
+    
+        # Only print when we have meaningful updates or when complete
+        if self.current == 1 or self.current == self.total or self.current % max(1, self.total // 20) == 0:
+            print(line, flush=True)
+        elif self.current == self.total:
+            print(line, flush=True)
 
     @staticmethod
     def print_results(stats: dict):
