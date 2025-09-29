@@ -77,6 +77,26 @@ class CivitaiProcessor:
         
         required_fields = ['model', 'modelId', 'modelVersionId']
         return all(field in json_data for field in required_fields)
+
+    def _should_overwrite_json(self, json_path: Path) -> bool:
+        """Check if existing JSON should be overwritten based on last_updated format"""
+        existing_data = self.file_manager.load_existing_json(json_path)
+        
+        if not existing_data:
+            return True
+        
+        if 'last_updated' not in existing_data:
+            return True
+        
+        last_updated = existing_data.get('last_updated', '')
+        if not isinstance(last_updated, str):
+            return True
+        
+        try:
+            datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+            return not self._has_complete_metadata(existing_data)
+        except (ValueError, AttributeError):
+            return True
     
     def fetch_and_save_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[str, Any]:
         """Fetch metadata from Civitai and save it in JSON format"""
@@ -125,6 +145,10 @@ class CivitaiProcessor:
         """Save metadata to JSON file in ordered format"""
         json_path = self.file_manager.get_json_path(file_path)
         
+        if json_path.exists() and not self._should_overwrite_json(json_path):
+            logger.info(f"Skipping {json_path.name} - already has complete metadata")
+            return True
+        
         try:
             json_data = OrderedDict()
             
@@ -165,6 +189,10 @@ class CivitaiProcessor:
     def save_minimal_metadata(self, file_path: Path, sha256_hash: str) -> bool:
         """Save minimal metadata for files not found on Civitai"""
         json_path = self.file_manager.get_json_path(file_path)
+        
+        if json_path.exists() and not self._should_overwrite_json(json_path):
+            logger.info(f"Skipping {json_path.name} - already has metadata")
+            return True
         
         try:
             json_data = OrderedDict()
