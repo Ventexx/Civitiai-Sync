@@ -21,8 +21,5 @@ Provides SHA256 hash computation for safetensor files with progress tracking, pl
 ## main.py
 Command-line interface entry point that parses arguments, sets up logging, and invokes the processor with user-specified options.
 
-## metadata_saver.py
-Legacy helper class for saving metadata (functionality now mostly moved to civitai_processor.py), retained primarily for backwards compatibility.
-
 ## progress_handler.py
 Terminal UI components including progress bars with ETA calculations and formatted status messages with timestamps and elapsed time tracking.
