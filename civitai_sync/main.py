@@ -56,9 +56,15 @@ def main():
     )
 
     parser.add_argument(
-        '--list-not-found', '-l',
+        '--list', '-l',
         action='store_true',
         help='List all files that could not be found on Civitai'
+    )
+    
+    parser.add_argument(
+        '--list-img', '-li',
+        action='store_true',
+        help='List all files that have no preview image'
     )
     
     parser.add_argument(
@@ -83,7 +89,7 @@ def main():
     args = parser.parse_args()
 
     # Validate argument combinations
-    if args.list_not_found:
+    if args.list or args.list_img:
         invalid_args = []
         if args.api_key:
             invalid_args.append('--api-key')
@@ -93,7 +99,11 @@ def main():
             invalid_args.append('--rate-limit')
         
         if invalid_args:
-            parser.error(f"--list-not-found cannot be combined with: {', '.join(invalid_args)}")
+            option_name = '--list' if args.list else '--list-img'
+            parser.error(f"{option_name} cannot be combined with: {', '.join(invalid_args)}")
+        
+        if args.list and args.list_img:
+            parser.error("--list and --list-img cannot be used together")
     
     # Handle API key saving
     if args.save_api_key:
@@ -107,10 +117,10 @@ def main():
         if not args.folder_path:
             return 0
 
-    # Handle list-not-found command
-    if args.list_not_found:
+    # Handle list commands
+    if args.list:
         if not args.folder_path:
-            parser.error("folder_path is required for --list-not-found")
+            parser.error("folder_path is required for --list")
         
         folder_path = Path(args.folder_path)
         if not folder_path.exists():
@@ -133,6 +143,40 @@ def main():
             )
             
             processor.list_not_found_files(quiet=args.quiet, verbose=args.verbose)
+            return 0
+            
+        except Exception as e:
+            StatusDisplay.print_error(f"Error listing files: {e}")
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
+
+    if args.list_img:
+        if not args.folder_path:
+            parser.error("folder_path is required for --list-img")
+        
+        folder_path = Path(args.folder_path)
+        if not folder_path.exists():
+            StatusDisplay.print_error(f"Folder not found: {folder_path}")
+            return 1
+        
+        if not folder_path.is_dir():
+            StatusDisplay.print_error(f"Path is not a directory: {folder_path}")
+            return 1
+        
+        # Setup logging for list command
+        if not args.quiet:
+            setup_logging(args.verbose)
+        
+        try:
+            processor = CivitaiProcessor(
+                folder_path=str(folder_path),
+                api_key=None,  # Not needed for listing
+                rate_limit_delay=1.0,
+            )
+            
+            processor.list_files_without_images(quiet=args.quiet, verbose=args.verbose)
             return 0
             
         except Exception as e:

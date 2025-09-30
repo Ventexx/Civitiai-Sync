@@ -265,8 +265,7 @@ class CivitaiProcessor:
                 if metadata:
                     image_url = self.api_client.get_primary_image_url(metadata)
                     if image_url:
-                        # Start with .png, but download_image will adjust extension based on actual content
-                        preview_path = file_path.with_suffix('.preview.png')
+                        preview_path = file_path.with_suffix('')
                         if self.api_client.download_image(image_url, preview_path):
                             downloaded_count += 1
                     else:
@@ -344,6 +343,90 @@ class CivitaiProcessor:
                 StatusDisplay.print_info(f"{relative_path}")
             
             print(f"\nTotal: {len(not_found_files)} file(s) not found on Civitai")
+
+    def list_files_without_images(self, quiet: bool = False, verbose: bool = False):
+        """List all safetensor files that don't have a corresponding .png preview image"""
+        
+        all_safetensor_files = self.file_manager.find_safetensor_files()
+        files_without_images = []
+        
+        for safetensor_file in all_safetensor_files:
+            # Look for any .png file with the same base name
+            # This includes [name].png, [name].preview.png, [name].preview0.png, etc.
+            base_name = safetensor_file.stem
+            parent_dir = safetensor_file.parent
+            
+            # Find all .png files that match the pattern
+            has_png = False
+            for png_file in parent_dir.glob(f"{base_name}*.png"):
+                # Check if it's a valid preview image
+                # Valid patterns: [name].png, [name].preview.png, [name].preview[0-9].png
+                png_stem = png_file.stem
+                
+                # Remove the base name to see what's left
+                suffix_part = png_stem[len(base_name):]
+                
+                # Valid if: empty, .preview, or .preview[0-9]
+                if (suffix_part == "" or 
+                    suffix_part == ".preview" or 
+                    (suffix_part.startswith(".preview") and len(suffix_part) == 9 and suffix_part[-1].isdigit())):
+                    has_png = True
+                    break
+            
+            if not has_png:
+                files_without_images.append(safetensor_file)
+        
+        if quiet:
+            # Minimal output - just file paths
+            for file_path in files_without_images:
+                print(file_path)
+        elif verbose:
+            # Detailed file tree output
+            if not files_without_images:
+                StatusDisplay.print_info("All files have preview images")
+                return
+            
+            StatusDisplay.print_header("Files without preview images (.png)")
+            
+            # Group files by directory for tree display
+            from collections import defaultdict
+            files_by_dir = defaultdict(list)
+            
+            for file_path in files_without_images:
+                relative_path = file_path.relative_to(self.folder_path)
+                parent_dir = relative_path.parent
+                files_by_dir[parent_dir].append(relative_path.name)
+            
+            # Sort directories and files
+            sorted_dirs = sorted(files_by_dir.keys(), key=str)
+            
+            for dir_path in sorted_dirs:
+                if str(dir_path) == '.':
+                    print(f"│ {self.folder_path.name}/")
+                else:
+                    print(f"│ {self.folder_path.name}/{dir_path}/")
+                
+                sorted_files = sorted(files_by_dir[dir_path])
+                for i, filename in enumerate(sorted_files):
+                    is_last = i == len(sorted_files) - 1
+                    connector = "└─" if is_last else "├─"
+                    print(f"│   {connector} {filename}")
+            
+            print(f"└─ Total: {len(files_without_images)} file(s) without preview images")
+        
+        else:
+            # Standard output
+            if not files_without_images:
+                StatusDisplay.print_info("All files have preview images")
+                return
+            
+            StatusDisplay.print_header("Files without preview images (.png)")
+            
+            for file_path in files_without_images:
+                relative_path = file_path.relative_to(self.folder_path)
+                StatusDisplay.print_info(f"{relative_path}")
+            
+            print(f"\nTotal: {len(files_without_images)} file(s) without preview images")
         
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """Process entire directory: compute hashes, fetch metadata, save results"""      
