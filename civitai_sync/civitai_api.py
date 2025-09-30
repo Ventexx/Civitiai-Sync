@@ -144,7 +144,7 @@ class CivitaiAPIClient:
             else:
                 image = image.convert('RGB')
 
-            png_output_path = output_path.with_suffix('.preview.png')
+            png_output_path = Path(str(output_path) + '.preview.png')
             image.save(png_output_path, 'PNG', optimize=True)
             
             logger.info(f"✓ Downloaded image: {output_path.name}")
