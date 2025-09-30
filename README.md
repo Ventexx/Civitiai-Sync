@@ -18,7 +18,7 @@ A powerful command-line tool for syncing safetensor model metadata and preview i
    * [With API Key](#with-api-key)
    * [Save API Key](#save-api-key)
    * [Download Images](#download-images)
-   * [List Not Found Files/Images](#list-not-found-files/images)
+   * [List Not Found Files/Images](#list-not-found-filesimages)
    * [Rate Limiting](#rate-limiting)
 6. [Contribution Guidelines](#contribution-guidelines)
 7. [Contact](#contact)
