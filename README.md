@@ -99,7 +99,8 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 | `--api-key` | Civitai API key for this session |
 | `--save-api-key` | Save API key to local config |
 | `--img, --images` | Download preview images |
-| `--list-not-found, -l` | List all files that could not be found on Civitai |
+| `--list, -l` | List all files that could not be found on Civitai |
+| `--list-img, -li` | List all files that have no preview image |
 | `--rate-limit` | Delay between API requests in seconds (default: 1.0) |
 | `--verbose, -v` | Enable verbose logging |
 | `--quiet, -q` | Suppress output except errors |
@@ -139,32 +140,34 @@ Include preview images in the sync:
 civitai-sync /path/to/your/models --images
 ```
 
-### List Not Found Files
+### List Not Found Files/Images
 
 Display all files that couldn't be found on Civitai and have no proper metadata:
 
 ```
-civitai-sync /path/to/your/models --list-not-found
+civitai-sync /path/to/your/models --list
 ```
 
-This command works independently and cannot be combined with other processing options. It supports different output modes:
+
+Display all files that don't have a corresponding preview image:
+
+```
+civitai-sync /path/to/your/models --list-img
+```
+
+These command works independently and cannot be combined with other processing options. They supports different output modes:
 
 - **Standard output**: Clean list with relative paths and totals
 - **Quiet mode** (`-q`): Only essential file paths for scripting
 - **Verbose mode** (`-v`): File tree structure showing directory hierarchy
 
-### Advanced Options
+### Rate Limiting
+
+Control the delay between API requests to respect Civitai's rate limits:
 
 ```
-civitai-sync /path/to/your/models
-  --api-key YOUR_API_KEY
-  --save-api-key YOUR_API_KEY
-  --img
-  -l
-  --rate-limit 2.0
+civitai-sync /path/to/your/models --rate-limit 2.0 
 ```
-
-Use `--verbose`/`-v` or `--quiet`/`-q` to toggle logging verbosity.
 
 ---
 
