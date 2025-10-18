@@ -86,6 +86,7 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
     - Do not delete the repository when using editable mode.
 
 ### Uninstall
+
     ```
     pip uninstall civitai-sync
     ```
