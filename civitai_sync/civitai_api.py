@@ -198,19 +198,19 @@ class CivitaiAPIClient:
             if any(url_lower.endswith(ext) for ext in video_extensions):
                 return False
             
-            # Make a HEAD request to check content type
-            response = self.session.head(url, timeout=10)
-            if response.status_code == 200:
-                content_type = response.headers.get('content-type', '').lower()
-                return content_type.startswith('image/')
-            
-            # If HEAD fails, try a small GET request
-            response = self.session.get(url, timeout=10, stream=True)
-            if response.status_code == 200:
-                content_type = response.headers.get('content-type', '').lower()
-                return content_type.startswith('image/')
-            
-            return False
+            # Accept known image formats
+            image_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif']
+            if any(url_lower.endswith(ext) for ext in image_extensions):
+                return True
+
+            # If no extension or unknown extension, check if it's a Civitai URL pattern
+            # Civitai image URLs typically contain /images/ in the path
+            if 'civitai.com' in url_lower and '/images/' in url_lower:
+                return True
+
+            # For other URLs without clear extensions, assume they might be images
+            # The actual download will fail gracefully if they're not
+            return True
             
         except Exception as e:
             logger.debug(f"Error validating image URL {url}: {e}")
