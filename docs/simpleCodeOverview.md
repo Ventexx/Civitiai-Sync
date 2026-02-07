@@ -7,7 +7,7 @@ Package initialization file that defines the module version, author info, and ex
 API client for communicating with Civitai's web service, handling HTTP requests with retry logic, rate limiting, exponential backoff, and downloading model metadata and preview images.
 
 ## civitai_processor.py
-Main orchestration layer that coordinates the entire sync workflow: validates safetensor files, computes hashes, fetches metadata from Civitai, saves JSON files, and downloads images.
+Main orchestration layer that coordinates the entire sync workflow: validates safetensor files, computes hashes, fetches metadata from Civitai, saves JSON files, updates old metadata in case of new safetensor files, and downloads images.
 
 ## config_manager.py
 Manages persistent configuration storage (like API keys) in the user's home directory, providing simple load/save operations for settings.

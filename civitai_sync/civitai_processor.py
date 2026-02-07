@@ -461,6 +461,143 @@ class CivitaiProcessor:
                 f"\nTotal: {len(files_without_images)} file(s) without preview images"
             )
 
+    def _handle_hash_mismatch(
+        self,
+        file_path: Path,
+        json_data: Dict[str, Any],
+        json_path: Path,
+        new_hash: str,
+    ):
+        """Handle JSON updates when safetensor hash changed"""
+
+        existing_not_found = json_data.get("civitai_not_found") is True
+        existing_after_update = json_data.get("civitai_not_found-after_update") is True
+
+        metadata = self.api_client.get_model_by_hash(new_hash)
+
+        # Always update hash + timestamp
+        json_data["sha256"] = new_hash
+        json_data["last_updated"] = datetime.now().isoformat()
+
+        # ─────────────────────────────
+        # Metadata FOUND
+        # ─────────────────────────────
+        if metadata:
+            # clean flags
+            json_data.pop("civitai_not_found", None)
+            json_data.pop("civitai_not_found-after_update", None)
+
+            # merge only known metadata fields
+            self._merge_metadata_fields(json_data, metadata)
+
+            json_path.write_text(
+                json.dumps(json_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return
+
+        # ─────────────────────────────
+        # Metadata NOT FOUND
+        # ─────────────────────────────
+        if existing_not_found:
+            # already not found → only hash + date updated
+            json_path.write_text(
+                json.dumps(json_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return
+
+        # regression case
+        if not existing_not_found:
+            json_data["civitai_not_found-after_update"] = True
+            json_path.write_text(
+                json.dumps(json_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+    def _merge_metadata_fields(
+        self,
+        json_data: Dict[str, Any],
+        metadata: Dict[str, Any],
+    ):
+        """Merge only fields explicitly returned by Civitai"""
+
+        model = metadata.get("model", {})
+        json_data.setdefault("model", {})
+
+        for key in ("name", "type", "nsfw", "poi"):
+            if key in model:
+                json_data["model"][key] = model[key]
+
+        for key in (
+            "modelId",
+            "trainedWords",
+            "baseModel",
+        ):
+            if key in metadata:
+                json_data[key] = metadata[key]
+
+        if "id" in metadata:
+            json_data["modelVersionId"] = metadata["id"]
+
+    def process_update_mode(
+        self,
+        download_images: bool = False,
+        quiet: bool = False,
+        verbose: bool = False,
+    ):
+        """Update JSON metadata only when safetensor hash changes"""
+
+        from .progress_handler import ProgressBar
+
+        StatusDisplay.print_header(f"Update mode: {self.folder_path}")
+
+        safetensors = self.file_manager.find_safetensor_files()
+        progress = ProgressBar(len(safetensors), "Checking hashes...")
+
+        for i, file_path in enumerate(safetensors, 1):
+            json_path = self.file_manager.get_json_path(file_path)
+            json_data = self.file_manager.load_existing_json(json_path)
+
+            current_hash = compute_sha256(file_path, quiet=True)
+
+            # CASE C — no JSON → normal metadata flow
+            if json_data is None:
+                metadata = self.api_client.get_model_by_hash(current_hash)
+                if metadata:
+                    self.save_metadata_file(file_path, current_hash, metadata)
+                else:
+                    self.save_minimal_metadata(file_path, current_hash)
+                progress.update(i)
+                continue
+
+            stored_hash = self.file_manager.get_sha256_from_json(json_data)
+
+            # CASE A — hash matches
+            if stored_hash == current_hash:
+                json_data["last_updated"] = datetime.now().isoformat()
+                json_path.write_text(
+                    json.dumps(json_data, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                progress.update(i)
+                continue
+
+            # CASE B — hash mismatch
+            self._handle_hash_mismatch(
+                file_path=file_path,
+                json_data=json_data,
+                json_path=json_path,
+                new_hash=current_hash,
+            )
+            progress.update(i)
+
+        progress.finish("Update completed")
+
+        if download_images:
+            all_hashes = self.file_manager.get_all_hashes()
+            self.download_images({Path(k): v for k, v in all_hashes.items()})
+
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
         """Process entire directory: compute hashes, fetch metadata, save results"""
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")

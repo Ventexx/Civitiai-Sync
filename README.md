@@ -20,6 +20,7 @@ A powerful command-line tool for syncing safetensor model metadata and preview i
    * [Download Images](#download-images)
    * [List Not Found Files/Images](#list-not-found-filesimages)
    * [Rate Limiting](#rate-limiting)
+   * [Update Mode](#update-mode)
 6. [Contribution Guidelines](#contribution-guidelines)
 7. [Contact](#contact)
 8. [License](#license)
@@ -103,6 +104,7 @@ Civitai Sync automatically detects `.safetensor(s)` files in your specified dire
 | `--img, --images` | Download preview images |
 | `--list, -l` | List all files that could not be found on Civitai |
 | `--list-img, -li` | List all files that have no preview image |
+| `--update` | Update JSON metadata when safetensor hashes change |
 | `--rate-limit` | Delay between API requests in seconds (default: 1.0) |
 | `--verbose, -v` | Enable verbose logging |
 | `--quiet, -q` | Suppress output except errors |
@@ -155,6 +157,15 @@ Display all files that don't have a corresponding preview image:
 
 ```
 civitai-sync /path/to/your/models --list-img
+```
+
+### Update Mode
+
+Safely update existing JSON metadata when a `.safetensor` file has been manually replaced with a newer version.  
+This mode compares hashes and selectively refreshes metadata without overwriting user-added fields.
+
+```
+civitai-sync /path/to/your/models --update
 ```
 
 These command works independently and cannot be combined with other processing options. They supports different output modes:
