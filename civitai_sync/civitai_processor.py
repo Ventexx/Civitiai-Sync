@@ -2,12 +2,12 @@
 Enhanced processor for handling Civitai API integration with local safetensor files
 """
 
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime
-from collections import OrderedDict
 import json
+import logging
+from collections import OrderedDict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from .civitai_api import CivitaiAPIClient
 from .file_manager import FileManager
@@ -19,45 +19,55 @@ logger = logging.getLogger(__name__)
 
 class CivitaiProcessor:
     """Enhanced processor for Civitai integration"""
-    
-    def __init__(self, folder_path: str, api_key: Optional[str] = None, 
-                 rate_limit_delay: float = 1.0):
+
+    def __init__(
+        self,
+        folder_path: str,
+        api_key: Optional[str] = None,
+        rate_limit_delay: float = 1.0,
+    ):
         """Initialize CivitaiProcessor with folder path and API settings"""
         self.file_manager = FileManager(folder_path)
         self.api_client = CivitaiAPIClient(api_key, rate_limit_delay)
         self.folder_path = Path(folder_path)
-    
+
     def validate_safetensor_files(self, files: List[Path]) -> List[Path]:
         """Validate that files are proper safetensor files, return only valid ones"""
         valid_files = []
-        
+
         for file_path in files:
             if verify_safetensor_file(file_path):
                 valid_files.append(file_path)
             else:
-                logger.warning(f"Invalid or corrupted safetensor file: {file_path.name}")
-        
+                logger.warning(
+                    f"Invalid or corrupted safetensor file: {file_path.name}"
+                )
+
         if files and not valid_files:
             logger.error("All safetensor files are invalid or corrupted; aborting.")
             raise ValueError("No valid safetensor files found")
 
         return valid_files
-    
+
     def compute_missing_hashes(self, files_needing_hash: List[Path]) -> Dict[Path, str]:
         """Compute SHA256 hashes for files that don't have them"""
         from .progress_handler import ProgressBar
-        
+
         computed_hashes = {}
         valid_files = self.validate_safetensor_files(files_needing_hash)
-        
+
         if len(valid_files) != len(files_needing_hash):
-            logger.warning(f"Skipping {len(files_needing_hash) - len(valid_files)} invalid files")
-        
+            logger.warning(
+                f"Skipping {len(files_needing_hash) - len(valid_files)} invalid files"
+            )
+
         if not valid_files:
             return computed_hashes
-        
-        progress = ProgressBar(len(valid_files), "Computing SHA256 hashes...", single_line=True)
-        
+
+        progress = ProgressBar(
+            len(valid_files), "Computing SHA256 hashes...", single_line=True
+        )
+
         for i, file_path in enumerate(valid_files):
             try:
                 hash_value = compute_sha256(file_path, quiet=True)
@@ -66,147 +76,139 @@ class CivitaiProcessor:
             except Exception as e:
                 logger.error(f"Failed to compute hash for {file_path.name}: {e}")
                 progress.update(i + 1)
-        
+
         progress.finish("Hash computation completed")
         return computed_hashes
-    
+
     def _has_complete_metadata(self, json_data: Dict[Any, Any]) -> bool:
         """Check if JSON contains complete metadata or not-found flag"""
-        if json_data.get('civitai_not_found'):
+        if json_data.get("civitai_not_found"):
             return True
-        
-        required_fields = ['model', 'modelId', 'modelVersionId']
+
+        required_fields = ["model", "modelId", "modelVersionId"]
         return all(field in json_data for field in required_fields)
 
     def _should_overwrite_json(self, json_path: Path) -> bool:
-        """Check if existing JSON should be overwritten based on last_updated format"""
+        """Overwrite only if JSON is missing or invalid"""
         existing_data = self.file_manager.load_existing_json(json_path)
-        
-        if not existing_data:
-            return True
-        
-        if 'last_updated' not in existing_data:
-            return True
-        
-        last_updated = existing_data.get('last_updated', '')
-        if not isinstance(last_updated, str):
-            return True
-        
-        try:
-            datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
-            return not self._has_complete_metadata(existing_data)
-        except (ValueError, AttributeError):
-            return True
-    
+        return existing_data is None
+
     def fetch_and_save_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[str, Any]:
         """Fetch metadata from Civitai and save it in JSON format"""
         from .progress_handler import ProgressBar
-        
-        stats = {
-            'metadata_fetched': 0,
-            'files_saved': 0,
-            'not_found': 0,
-            'errors': []
-        }
-        
+
+        stats = {"metadata_fetched": 0, "files_saved": 0, "not_found": 0, "errors": []}
+
         if not file_hash_map:
             return stats
-        
+
         progress = ProgressBar(len(file_hash_map), "Fetching and saving metadata...")
-        
+
         for i, (file_path, hash_value) in enumerate(file_hash_map.items(), 1):
             try:
                 metadata = self.api_client.get_model_by_hash(hash_value)
-                
+
                 if metadata:
-                    stats['metadata_fetched'] += 1
-                    
+                    stats["metadata_fetched"] += 1
+
                     if self.save_metadata_file(file_path, hash_value, metadata):
-                        stats['files_saved'] += 1
+                        stats["files_saved"] += 1
                         progress.update(i)
                     else:
-                        stats['errors'].append(f"Failed to save metadata for {file_path.name}")
+                        stats["errors"].append(
+                            f"Failed to save metadata for {file_path.name}"
+                        )
                 else:
-                    stats['not_found'] += 1
+                    stats["not_found"] += 1
                     self.save_minimal_metadata(file_path, hash_value)
                     progress.update(i)
-                    
+
             except Exception as e:
                 error_msg = f"Error processing {file_path.name}: {e}"
                 logger.error(error_msg)
-                stats['errors'].append(error_msg)
+                stats["errors"].append(error_msg)
                 progress.update(i)
-        
-        progress.finish(f"Processing completed - {stats['metadata_fetched']} models found")
-        
+
+        progress.finish(
+            f"Processing completed - {stats['metadata_fetched']} models found"
+        )
+
         return stats
 
-    def save_metadata_file(self, file_path: Path, sha256_hash: str, metadata: Dict[Any, Any]) -> bool:
-        """Save metadata to JSON file in ordered format"""
+    def save_metadata_file(
+        self, file_path: Path, sha256_hash: str, metadata: Dict[Any, Any]
+    ) -> bool:
         json_path = self.file_manager.get_json_path(file_path)
-        
-        if json_path.exists() and not self._should_overwrite_json(json_path):
-            logger.info(f"Skipping {json_path.name} - already has complete metadata")
-            return True
-        
+
         try:
-            json_data = OrderedDict()
-            
-            json_data['sha256'] = sha256_hash
-            
-            model_info = OrderedDict()
-            
+            existing = self.file_manager.load_existing_json(json_path) or {}
+            json_data = OrderedDict(existing)
+
+            # Fields owned by this app → allowed to overwrite
+            json_data["sha256"] = sha256_hash
+
             model_data = None
-            if 'model' in metadata and isinstance(metadata['model'], dict):
-                model_data = metadata['model']
+            if isinstance(metadata.get("model"), dict):
+                model_data = metadata["model"]
             elif isinstance(metadata, dict):
                 model_data = metadata
-            
+
             if model_data:
-                model_info['name'] = model_data.get('name', '')
-                model_info['type'] = model_data.get('type', '')
-                model_info['nsfw'] = model_data.get('nsfw', False)
-                model_info['poi'] = model_data.get('poi', False)
-            
-            json_data['model'] = model_info
-            json_data['modelId'] = metadata.get('modelId')
-            json_data['modelVersionId'] = metadata.get('id')
-            json_data['trainedWords'] = metadata.get('trainedWords', [])
-            json_data['baseModel'] = metadata.get('baseModel', '')
-            json_data['last_updated'] = datetime.now().isoformat()
-            
+                json_data.setdefault("model", {})
+                json_data["model"]["name"] = model_data.get(
+                    "name", json_data["model"].get("name", "")
+                )
+                json_data["model"]["type"] = model_data.get(
+                    "type", json_data["model"].get("type", "")
+                )
+                json_data["model"]["nsfw"] = model_data.get(
+                    "nsfw", json_data["model"].get("nsfw", False)
+                )
+                json_data["model"]["poi"] = model_data.get(
+                    "poi", json_data["model"].get("poi", False)
+                )
+
+            json_data["modelId"] = metadata.get("modelId", json_data.get("modelId"))
+            json_data["modelVersionId"] = metadata.get(
+                "id", json_data.get("modelVersionId")
+            )
+            json_data["trainedWords"] = metadata.get(
+                "trainedWords", json_data.get("trainedWords", [])
+            )
+            json_data["baseModel"] = metadata.get(
+                "baseModel", json_data.get("baseModel", "")
+            )
+            json_data["last_updated"] = datetime.now().isoformat()
+
             json_path.parent.mkdir(parents=True, exist_ok=True)
-            with json_path.open('w', encoding='utf-8') as f:
+            with json_path.open("w", encoding="utf-8") as f:
                 json.dump(json_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Saved metadata: {json_path.name}")
+
+            logger.info(f"Merged metadata into {json_path.name}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to save metadata for {file_path.name}: {e}")
+            logger.error(f"Failed to merge metadata for {file_path.name}: {e}")
             return False
 
     def save_minimal_metadata(self, file_path: Path, sha256_hash: str) -> bool:
-        """Save minimal metadata for files not found on Civitai"""
         json_path = self.file_manager.get_json_path(file_path)
-        
-        if json_path.exists() and not self._should_overwrite_json(json_path):
-            logger.info(f"Skipping {json_path.name} - already has metadata")
-            return True
-        
+
         try:
-            json_data = OrderedDict()
-            json_data['sha256'] = sha256_hash
-            json_data['civitai_not_found'] = True
-            json_data['last_updated'] = datetime.now().isoformat()
-            
+            existing = self.file_manager.load_existing_json(json_path) or {}
+            json_data = OrderedDict(existing)
+
+            json_data["sha256"] = sha256_hash
+            json_data["civitai_not_found"] = True
+            json_data["last_updated"] = datetime.now().isoformat()
+
             json_path.parent.mkdir(parents=True, exist_ok=True)
-            with json_path.open('w', encoding='utf-8') as f:
+            with json_path.open("w", encoding="utf-8") as f:
                 json.dump(json_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Saved minimal metadata: {json_path.name}")
+
+            logger.info(f"Merged minimal metadata into {json_path.name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to save minimal metadata for {file_path.name}: {e}")
             return False
@@ -214,34 +216,45 @@ class CivitaiProcessor:
     def download_images(self, file_hash_map: Dict[Path, str]) -> int:
         """Download preview images for models that have metadata"""
         from .progress_handler import ProgressBar
-        
+
         downloaded_count = 0
-        
+
         all_safetensor_files = self.file_manager.find_safetensor_files()
         all_existing_hashes = self.file_manager.get_all_hashes()
-        
+
         files_needing_images = []
         for file_path in all_safetensor_files:
             json_path = self.file_manager.get_json_path(file_path)
             json_data = self.file_manager.load_existing_json(json_path)
-            
-            if not json_data or json_data.get('civitai_not_found'):
+
+            if not json_data or json_data.get("civitai_not_found"):
                 continue
-            
+
             # Check for any preview image with common extensions
-            preview_extensions = ['.preview.png', '.preview.jpg', '.preview.jpeg', '.preview.webp', '.preview.gif']
-            has_preview = any((file_path.parent / (file_path.stem + ext)).exists() for ext in preview_extensions)
-            
+            preview_extensions = [
+                ".preview.png",
+                ".preview.jpg",
+                ".preview.jpeg",
+                ".preview.webp",
+                ".preview.gif",
+            ]
+            has_preview = any(
+                (file_path.parent / (file_path.stem + ext)).exists()
+                for ext in preview_extensions
+            )
+
             if has_preview:
                 continue
-                
+
             files_needing_images.append(file_path)
-        
+
         if not files_needing_images:
             return 0
-        
-        progress = ProgressBar(len(files_needing_images), "Downloading preview images...")
-        
+
+        progress = ProgressBar(
+            len(files_needing_images), "Downloading preview images..."
+        )
+
         for i, file_path in enumerate(files_needing_images):
             try:
                 hash_value = None
@@ -252,46 +265,50 @@ class CivitaiProcessor:
                 else:
                     json_path = self.file_manager.get_json_path(file_path)
                     json_data = self.file_manager.load_existing_json(json_path)
-                    if json_data and 'sha256' in json_data:
-                        hash_value = json_data['sha256']
-                
+                    if json_data and "sha256" in json_data:
+                        hash_value = json_data["sha256"]
+
                 if not hash_value:
-                    logger.warning(f"No hash available for {file_path.name}, skipping image download")
+                    logger.warning(
+                        f"No hash available for {file_path.name}, skipping image download"
+                    )
                     progress.update(i + 1)
                     continue
-                
+
                 metadata = self.api_client.get_model_by_hash(hash_value)
-                
+
                 if metadata:
                     image_url = self.api_client.get_primary_image_url(metadata)
                     if image_url:
-                        preview_path = file_path.with_suffix('')
+                        preview_path = file_path.with_suffix("")
                         if self.api_client.download_image(image_url, preview_path):
                             downloaded_count += 1
                     else:
                         logger.info(f"No valid images available for {file_path.name}")
-                
+
                 progress.update(i + 1)
             except Exception as e:
                 logger.error(f"Error downloading image for {file_path.name}: {e}")
                 progress.update(i + 1)
-        
-        progress.finish(f"Image downloads completed - {downloaded_count} images downloaded")
+
+        progress.finish(
+            f"Image downloads completed - {downloaded_count} images downloaded"
+        )
         return downloaded_count
 
     def list_not_found_files(self, quiet: bool = False, verbose: bool = False):
         """List all files that have civitai_not_found flag set to True"""
-        
+
         all_safetensor_files = self.file_manager.find_safetensor_files()
         not_found_files = []
-        
+
         for safetensor_file in all_safetensor_files:
             json_path = self.file_manager.get_json_path(safetensor_file)
             json_data = self.file_manager.load_existing_json(json_path)
-            
-            if json_data and json_data.get('civitai_not_found') is True:
+
+            if json_data and json_data.get("civitai_not_found") is True:
                 not_found_files.append(safetensor_file)
-        
+
         if quiet:
             # Minimal output - just file paths
             for file_path in not_found_files:
@@ -301,81 +318,92 @@ class CivitaiProcessor:
             if not not_found_files:
                 StatusDisplay.print_info("No files found with 'civitai_not_found' flag")
                 return
-            
-            StatusDisplay.print_header("Files that couldn't be found on Civitai and have no proper metadata")
-            
+
+            StatusDisplay.print_header(
+                "Files that couldn't be found on Civitai and have no proper metadata"
+            )
+
             # Group files by directory for tree display
             from collections import defaultdict
+
             files_by_dir = defaultdict(list)
-            
+
             for file_path in not_found_files:
                 relative_path = file_path.relative_to(self.folder_path)
                 parent_dir = relative_path.parent
                 files_by_dir[parent_dir].append(relative_path.name)
-            
+
             # Sort directories and files
             sorted_dirs = sorted(files_by_dir.keys(), key=str)
-            
+
             for dir_path in sorted_dirs:
-                if str(dir_path) == '.':
+                if str(dir_path) == ".":
                     print(f"│ {self.folder_path.name}/")
                 else:
                     print(f"│ {self.folder_path.name}/{dir_path}/")
-                
+
                 sorted_files = sorted(files_by_dir[dir_path])
                 for i, filename in enumerate(sorted_files):
                     is_last = i == len(sorted_files) - 1
                     connector = "└─" if is_last else "├─"
                     print(f"│   {connector} {filename}")
-            
+
             print(f"└─ Total: {len(not_found_files)} file(s) not found on Civitai")
-        
+
         else:
             # Standard output
             if not not_found_files:
                 StatusDisplay.print_info("No files found with 'civitai_not_found' flag")
                 return
-            
-            StatusDisplay.print_header("Files that couldn't be found on Civitai and have no proper metadata")
-            
+
+            StatusDisplay.print_header(
+                "Files that couldn't be found on Civitai and have no proper metadata"
+            )
+
             for file_path in not_found_files:
                 relative_path = file_path.relative_to(self.folder_path)
                 StatusDisplay.print_info(f"{relative_path}")
-            
+
             print(f"\nTotal: {len(not_found_files)} file(s) not found on Civitai")
 
     def list_files_without_images(self, quiet: bool = False, verbose: bool = False):
         """List all safetensor files that don't have a corresponding .png preview image"""
-        
+
         all_safetensor_files = self.file_manager.find_safetensor_files()
         files_without_images = []
-        
+
         for safetensor_file in all_safetensor_files:
             # Look for any .png file with the same base name
             # This includes [name].png, [name].preview.png, [name].preview0.png, etc.
             base_name = safetensor_file.stem
             parent_dir = safetensor_file.parent
-            
+
             # Find all .png files that match the pattern
             has_png = False
             for png_file in parent_dir.glob(f"{base_name}*.png"):
                 # Check if it's a valid preview image
                 # Valid patterns: [name].png, [name].preview.png, [name].preview[0-9].png
                 png_stem = png_file.stem
-                
+
                 # Remove the base name to see what's left
-                suffix_part = png_stem[len(base_name):]
-                
+                suffix_part = png_stem[len(base_name) :]
+
                 # Valid if: empty, .preview, or .preview[0-9]
-                if (suffix_part == "" or 
-                    suffix_part == ".preview" or 
-                    (suffix_part.startswith(".preview") and len(suffix_part) == 9 and suffix_part[-1].isdigit())):
+                if (
+                    suffix_part == ""
+                    or suffix_part == ".preview"
+                    or (
+                        suffix_part.startswith(".preview")
+                        and len(suffix_part) == 9
+                        and suffix_part[-1].isdigit()
+                    )
+                ):
                     has_png = True
                     break
-            
+
             if not has_png:
                 files_without_images.append(safetensor_file)
-        
+
         if quiet:
             # Minimal output - just file paths
             for file_path in files_without_images:
@@ -385,104 +413,117 @@ class CivitaiProcessor:
             if not files_without_images:
                 StatusDisplay.print_info("All files have preview images")
                 return
-            
+
             StatusDisplay.print_header("Files without preview images (.png)")
-            
+
             # Group files by directory for tree display
             from collections import defaultdict
+
             files_by_dir = defaultdict(list)
-            
+
             for file_path in files_without_images:
                 relative_path = file_path.relative_to(self.folder_path)
                 parent_dir = relative_path.parent
                 files_by_dir[parent_dir].append(relative_path.name)
-            
+
             # Sort directories and files
             sorted_dirs = sorted(files_by_dir.keys(), key=str)
-            
+
             for dir_path in sorted_dirs:
-                if str(dir_path) == '.':
+                if str(dir_path) == ".":
                     print(f"│ {self.folder_path.name}/")
                 else:
                     print(f"│ {self.folder_path.name}/{dir_path}/")
-                
+
                 sorted_files = sorted(files_by_dir[dir_path])
                 for i, filename in enumerate(sorted_files):
                     is_last = i == len(sorted_files) - 1
                     connector = "└─" if is_last else "├─"
                     print(f"│   {connector} {filename}")
-            
-            print(f"└─ Total: {len(files_without_images)} file(s) without preview images")
-        
+
+            print(
+                f"└─ Total: {len(files_without_images)} file(s) without preview images"
+            )
+
         else:
             # Standard output
             if not files_without_images:
                 StatusDisplay.print_info("All files have preview images")
                 return
-            
+
             StatusDisplay.print_header("Files without preview images (.png)")
-            
+
             for file_path in files_without_images:
                 relative_path = file_path.relative_to(self.folder_path)
                 StatusDisplay.print_info(f"{relative_path}")
-            
-            print(f"\nTotal: {len(files_without_images)} file(s) without preview images")
-        
+
+            print(
+                f"\nTotal: {len(files_without_images)} file(s) without preview images"
+            )
+
     def process_directory(self, download_images: bool = False) -> Dict[str, Any]:
-        """Process entire directory: compute hashes, fetch metadata, save results"""      
+        """Process entire directory: compute hashes, fetch metadata, save results"""
         StatusDisplay.print_header(f"Starting sync for: {self.folder_path}")
 
-        files_needing_hash, files_with_existing_hash = self.file_manager.analyze_directory()
+        files_needing_hash, files_with_existing_hash = (
+            self.file_manager.analyze_directory()
+        )
 
         if not files_needing_hash and not files_with_existing_hash:
             StatusDisplay.print_warning("No safetensor files found in directory!")
             return {
-                'success': False,
-                'error': 'No safetensor files found',
-                'stats': {'total_files': 0}
+                "success": False,
+                "error": "No safetensor files found",
+                "stats": {"total_files": 0},
             }
 
         all_safetensor_files = self.file_manager.find_safetensor_files()
         files_needing_metadata = []
-        
+
         for safetensor_file in all_safetensor_files:
             json_path = self.file_manager.get_json_path(safetensor_file)
             existing_json = self.file_manager.load_existing_json(json_path)
-            
+
             if not existing_json or not self._has_complete_metadata(existing_json):
                 files_needing_metadata.append(safetensor_file)
 
         results = {
-            'success': True,
-            'stats': {
-                'total_files': len(all_safetensor_files),
-                'files_needing_hash': len(files_needing_hash),
-                'files_with_existing_hash': len(files_with_existing_hash),
-                'files_needing_metadata': len(files_needing_metadata),
-                'hashes_computed': 0,
-                'metadata_fetched': 0,
-                'files_saved': 0,
-                'not_found': 0,
-                'images_downloaded': 0,
-                'errors': []
-            }
+            "success": True,
+            "stats": {
+                "total_files": len(all_safetensor_files),
+                "files_needing_hash": len(files_needing_hash),
+                "files_with_existing_hash": len(files_with_existing_hash),
+                "files_needing_metadata": len(files_needing_metadata),
+                "hashes_computed": 0,
+                "metadata_fetched": 0,
+                "files_saved": 0,
+                "not_found": 0,
+                "images_downloaded": 0,
+                "errors": [],
+            },
         }
 
         try:
-            StatusDisplay.print_info(f"Found {results['stats']['total_files']} safetensor files")
+            StatusDisplay.print_info(
+                f"Found {results['stats']['total_files']} safetensor files"
+            )
             if files_needing_metadata:
-                StatusDisplay.print_info(f"{len(files_needing_metadata)} files need metadata")
-            
+                StatusDisplay.print_info(
+                    f"{len(files_needing_metadata)} files need metadata"
+                )
+
             computed_hashes = {}
             if files_needing_hash:
-                StatusDisplay.print_info(f"Computing hashes for {len(files_needing_hash)} files...")
+                StatusDisplay.print_info(
+                    f"Computing hashes for {len(files_needing_hash)} files..."
+                )
                 computed_hashes = self.compute_missing_hashes(files_needing_hash)
-                results['stats']['hashes_computed'] = len(computed_hashes)
-        
+                results["stats"]["hashes_computed"] = len(computed_hashes)
+
             existing_hashes = self.file_manager.get_all_hashes()
-        
+
             metadata_file_hashes = {}
-        
+
             for file_path in files_needing_metadata:
                 if file_path in computed_hashes:
                     metadata_file_hashes[file_path] = computed_hashes[file_path]
@@ -490,36 +531,40 @@ class CivitaiProcessor:
                     metadata_file_hashes[file_path] = existing_hashes[str(file_path)]
                 else:
                     logger.warning(f"No hash available for {file_path.name}")
-        
+
             if metadata_file_hashes:
-                StatusDisplay.print_info(f"Fetching metadata for {len(metadata_file_hashes)} files...")
+                StatusDisplay.print_info(
+                    f"Fetching metadata for {len(metadata_file_hashes)} files..."
+                )
                 metadata_stats = self.fetch_and_save_metadata(metadata_file_hashes)
-                results['stats']['metadata_fetched'] = metadata_stats['metadata_fetched']
-                results['stats']['files_saved'] = metadata_stats['files_saved']
-                results['stats']['not_found'] = metadata_stats['not_found']
-                results['stats']['errors'].extend(metadata_stats['errors'])
-        
+                results["stats"]["metadata_fetched"] = metadata_stats[
+                    "metadata_fetched"
+                ]
+                results["stats"]["files_saved"] = metadata_stats["files_saved"]
+                results["stats"]["not_found"] = metadata_stats["not_found"]
+                results["stats"]["errors"].extend(metadata_stats["errors"])
+
             if download_images:
                 StatusDisplay.print_info("Downloading preview images...")
                 all_file_hashes = {}
                 all_file_hashes.update(computed_hashes)
-                
+
                 for file_path_str, hash_value in existing_hashes.items():
                     file_path = Path(file_path_str)
                     if file_path not in all_file_hashes:
                         all_file_hashes[file_path] = hash_value
-                
+
                 images_downloaded = self.download_images(all_file_hashes)
-                results['stats']['images_downloaded'] = images_downloaded
-        
-            StatusDisplay.print_results(results['stats'])
-        
+                results["stats"]["images_downloaded"] = images_downloaded
+
+            StatusDisplay.print_results(results["stats"])
+
         except Exception as e:
             logger.error(f"Error during processing: {e}")
             StatusDisplay.print_error(f"Processing failed: {e}")
-            results['success'] = False
-            results['error'] = str(e)
-            results['stats']['errors'].append(str(e))
+            results["success"] = False
+            results["error"] = str(e)
+            results["stats"]["errors"].append(str(e))
 
         finally:
             self.api_client.close()
@@ -527,8 +572,12 @@ class CivitaiProcessor:
         return results
 
 
-def process_civitai_directory(folder_path: str, api_key: Optional[str] = None, 
-                             rate_limit_delay: float = 1.0, download_images: bool = False) -> Dict[str, Any]:
+def process_civitai_directory(
+    folder_path: str,
+    api_key: Optional[str] = None,
+    rate_limit_delay: float = 1.0,
+    download_images: bool = False,
+) -> Dict[str, Any]:
     """Convenience function to process a directory with Civitai integration"""
     processor = CivitaiProcessor(folder_path, api_key, rate_limit_delay)
     return processor.process_directory(download_images)
