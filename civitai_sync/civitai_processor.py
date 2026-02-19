@@ -93,14 +93,23 @@ class CivitaiProcessor:
         existing_data = self.file_manager.load_existing_json(json_path)
         return existing_data is None
 
-    def fetch_and_save_metadata(self, file_hash_map: Dict[Path, str]) -> Dict[str, Any]:
-        """Fetch metadata from Civitai and save it in JSON format"""
+    def fetch_and_save_metadata(
+        self, file_hash_map: Dict[Path, str]
+    ) -> tuple[Dict[str, Any], Dict[Path, Dict[str, Any]]]:
+        """
+        Fetch metadata from Civitai and save JSON files.
+
+        Returns:
+            stats dict
+            metadata_cache mapping Path -> metadata (for reuse in image step)
+        """
         from .progress_handler import ProgressBar
 
         stats = {"metadata_fetched": 0, "files_saved": 0, "not_found": 0, "errors": []}
+        metadata_cache: Dict[Path, Dict[str, Any]] = {}
 
         if not file_hash_map:
-            return stats
+            return stats, metadata_cache
 
         progress = ProgressBar(len(file_hash_map), "Fetching and saving metadata...")
 
@@ -109,11 +118,11 @@ class CivitaiProcessor:
                 metadata = self.api_client.get_model_by_hash(hash_value)
 
                 if metadata:
+                    metadata_cache[file_path] = metadata
                     stats["metadata_fetched"] += 1
 
                     if self.save_metadata_file(file_path, hash_value, metadata):
                         stats["files_saved"] += 1
-                        progress.update(i)
                     else:
                         stats["errors"].append(
                             f"Failed to save metadata for {file_path.name}"
@@ -121,7 +130,8 @@ class CivitaiProcessor:
                 else:
                     stats["not_found"] += 1
                     self.save_minimal_metadata(file_path, hash_value)
-                    progress.update(i)
+
+                progress.update(i)
 
             except Exception as e:
                 error_msg = f"Error processing {file_path.name}: {e}"
@@ -133,7 +143,7 @@ class CivitaiProcessor:
             f"Processing completed - {stats['metadata_fetched']} models found"
         )
 
-        return stats
+        return stats, metadata_cache
 
     def save_metadata_file(
         self, file_path: Path, sha256_hash: str, metadata: Dict[Any, Any]
@@ -213,24 +223,41 @@ class CivitaiProcessor:
             logger.error(f"Failed to save minimal metadata for {file_path.name}: {e}")
             return False
 
-    def download_images(self, file_hash_map: Dict[Path, str]) -> int:
-        """Download preview images for models that have metadata"""
+    def download_images(
+        self,
+        file_hash_map: Dict[Path, str],
+        metadata_cache: Optional[Dict[Path, Dict[str, Any]]] = None,
+    ) -> int:
+        """
+        Download preview images using already-known hashes and metadata.
+
+        If metadata_cache is provided (normal sync flow), no filesystem rescans
+        or API re-fetching will occur.
+        If metadata_cache is None (standalone image mode), we gracefully fall back
+        to the old behaviour.
+        """
         from .progress_handler import ProgressBar
 
         downloaded_count = 0
 
-        all_safetensor_files = self.file_manager.find_safetensor_files()
-        all_existing_hashes = self.file_manager.get_all_hashes()
+        # ─────────────────────────────────────────────
+        # Use already-known files when available
+        # ─────────────────────────────────────────────
+        if metadata_cache is not None:
+            candidate_files = list(metadata_cache.keys())
+        else:
+            # Fallback mode (image-only workflows)
+            candidate_files = self.file_manager.find_safetensor_files()
 
         files_needing_images = []
-        for file_path in all_safetensor_files:
+
+        for file_path in candidate_files:
             json_path = self.file_manager.get_json_path(file_path)
             json_data = self.file_manager.load_existing_json(json_path)
 
             if not json_data or json_data.get("civitai_not_found"):
                 continue
 
-            # Check for any preview image with common extensions
             preview_extensions = [
                 ".preview.png",
                 ".preview.jpg",
@@ -238,15 +265,14 @@ class CivitaiProcessor:
                 ".preview.webp",
                 ".preview.gif",
             ]
+
             has_preview = any(
                 (file_path.parent / (file_path.stem + ext)).exists()
                 for ext in preview_extensions
             )
 
-            if has_preview:
-                continue
-
-            files_needing_images.append(file_path)
+            if not has_preview:
+                files_needing_images.append(file_path)
 
         if not files_needing_images:
             return 0
@@ -257,25 +283,21 @@ class CivitaiProcessor:
 
         for i, file_path in enumerate(files_needing_images):
             try:
-                hash_value = None
-                if file_path in file_hash_map:
-                    hash_value = file_hash_map[file_path]
-                elif str(file_path) in all_existing_hashes:
-                    hash_value = all_existing_hashes[str(file_path)]
-                else:
-                    json_path = self.file_manager.get_json_path(file_path)
-                    json_data = self.file_manager.load_existing_json(json_path)
-                    if json_data and "sha256" in json_data:
-                        hash_value = json_data["sha256"]
+                hash_value = file_hash_map.get(file_path)
 
                 if not hash_value:
-                    logger.warning(
-                        f"No hash available for {file_path.name}, skipping image download"
-                    )
                     progress.update(i + 1)
                     continue
 
-                metadata = self.api_client.get_model_by_hash(hash_value)
+                # ─────────────────────────────────────
+                # Use cached metadata when available
+                # ─────────────────────────────────────
+                metadata = None
+                if metadata_cache and file_path in metadata_cache:
+                    metadata = metadata_cache[file_path]
+                else:
+                    # fallback (legacy mode)
+                    metadata = self.api_client.get_model_by_hash(hash_value)
 
                 if metadata:
                     image_url = self.api_client.get_primary_image_url(metadata)
@@ -283,10 +305,9 @@ class CivitaiProcessor:
                         preview_path = file_path.with_suffix("")
                         if self.api_client.download_image(image_url, preview_path):
                             downloaded_count += 1
-                    else:
-                        logger.info(f"No valid images available for {file_path.name}")
 
                 progress.update(i + 1)
+
             except Exception as e:
                 logger.error(f"Error downloading image for {file_path.name}: {e}")
                 progress.update(i + 1)
@@ -294,6 +315,7 @@ class CivitaiProcessor:
         progress.finish(
             f"Image downloads completed - {downloaded_count} images downloaded"
         )
+
         return downloaded_count
 
     def list_not_found_files(self, quiet: bool = False, verbose: bool = False):
@@ -471,7 +493,6 @@ class CivitaiProcessor:
         """Handle JSON updates when safetensor hash changed"""
 
         existing_not_found = json_data.get("civitai_not_found") is True
-        existing_after_update = json_data.get("civitai_not_found-after_update") is True
 
         metadata = self.api_client.get_model_by_hash(new_hash)
 
@@ -669,11 +690,14 @@ class CivitaiProcessor:
                 else:
                     logger.warning(f"No hash available for {file_path.name}")
 
+            metadata_cache: Dict[Path, Dict[str, Any]] = {}
             if metadata_file_hashes:
                 StatusDisplay.print_info(
                     f"Fetching metadata for {len(metadata_file_hashes)} files..."
                 )
-                metadata_stats = self.fetch_and_save_metadata(metadata_file_hashes)
+                metadata_stats, metadata_cache = self.fetch_and_save_metadata(
+                    metadata_file_hashes
+                )
                 results["stats"]["metadata_fetched"] = metadata_stats[
                     "metadata_fetched"
                 ]
@@ -683,6 +707,7 @@ class CivitaiProcessor:
 
             if download_images:
                 StatusDisplay.print_info("Downloading preview images...")
+
                 all_file_hashes = {}
                 all_file_hashes.update(computed_hashes)
 
@@ -691,7 +716,11 @@ class CivitaiProcessor:
                     if file_path not in all_file_hashes:
                         all_file_hashes[file_path] = hash_value
 
-                images_downloaded = self.download_images(all_file_hashes)
+                images_downloaded = self.download_images(
+                    all_file_hashes,
+                    metadata_cache=metadata_cache,
+                )
+
                 results["stats"]["images_downloaded"] = images_downloaded
 
             StatusDisplay.print_results(results["stats"])
