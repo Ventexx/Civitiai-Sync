@@ -240,13 +240,10 @@ class CivitaiProcessor:
 
         downloaded_count = 0
 
-        # ─────────────────────────────────────────────
-        # Use already-known files when available
-        # ─────────────────────────────────────────────
-        if metadata_cache is not None:
+        # Use cache when available, but don't restrict candidates to it
+        if metadata_cache:
             candidate_files = list(metadata_cache.keys())
         else:
-            # Fallback mode (image-only workflows)
             candidate_files = self.file_manager.find_safetensor_files()
 
         files_needing_images = []
@@ -275,6 +272,7 @@ class CivitaiProcessor:
                 files_needing_images.append(file_path)
 
         if not files_needing_images:
+            logger.info("No files require image download")
             return 0
 
         progress = ProgressBar(
@@ -289,14 +287,14 @@ class CivitaiProcessor:
                     progress.update(i + 1)
                     continue
 
-                # ─────────────────────────────────────
-                # Use cached metadata when available
-                # ─────────────────────────────────────
                 metadata = None
+
+                # Use cached metadata first
                 if metadata_cache and file_path in metadata_cache:
                     metadata = metadata_cache[file_path]
-                else:
-                    # fallback (legacy mode)
+
+                # Otherwise fetch it once
+                if not metadata and hash_value:
                     metadata = self.api_client.get_model_by_hash(hash_value)
 
                 if metadata:
