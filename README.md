@@ -2,6 +2,8 @@
 
 A powerful command-line tool for syncing safetensor model metadata and preview images from Civitai.
 
+![Cover Image](ScreenshotCover.png)
+
 ---
 
 ## Table of Contents
